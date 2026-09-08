@@ -117,8 +117,8 @@ async Task<IResult> Register(RegisterRequest request, ErpDbContext db)
         Username = normalizedUsername,
         Email = normalizedEmail,
         PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-        CreatedDate = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Utc),
-        UpdatedDate = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Utc),
+        CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
+        UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
         IsActive = true,
     };
 
@@ -197,7 +197,7 @@ async Task<IResult> GetCompanyById(int id, ErpDbContext db)
 
 async Task<IResult> CreateCompany(Company company, ErpDbContext db)
 {
-    company.CreatedDate = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Utc);
+    company.CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
     db.Companies.Add(company);
     await db.SaveChangesAsync();
     return Results.Created($"/api/companies/{company.CompanyId}", company);
@@ -224,7 +224,7 @@ async Task<IResult> UpdateCompany(int id, Company updatedCompany, ErpDbContext d
     company.MSMENumber = updatedCompany.MSMENumber ?? company.MSMENumber;
     company.FSSAINumber = updatedCompany.FSSAINumber ?? company.FSSAINumber;
     company.IsActive = updatedCompany.IsActive;
-    company.UpdatedDate = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Utc);
+    company.UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
     
     await db.SaveChangesAsync();
     return Results.Ok(company);
@@ -311,7 +311,7 @@ List<InvoiceItem> BuildInvoiceItems(List<InvoiceItemRequest> requestItems)
             Amount = amount,
             TaxRate = item.TaxRate,
             TaxAmount = taxAmount,
-            CreatedDate = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Utc),
+            CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
         };
     }).ToList();
 }
@@ -407,19 +407,23 @@ async Task<IResult> CreateInvoice(InvoiceRequest request, ErpDbContext db)
 
     var items = BuildInvoiceItems(request.Items);
 
+    // Parse dates properly for PostgreSQL
+    var invoiceDate = DateTime.SpecifyKind(DateTime.Parse(request.InvoiceDate), DateTimeKind.Utc);
+    var dueDate = DateTime.SpecifyKind(DateTime.Parse(request.DueDate), DateTimeKind.Utc);
+
     var invoice = new Invoice
     {
         InvoiceId = Guid.NewGuid(),
         InvoiceNumber = request.InvoiceNumber.Trim(),
         CompanyId = request.CompanyId,
-        InvoiceDate = request.InvoiceDate,
-        DueDate = request.DueDate,
+        InvoiceDate = invoiceDate,
+        DueDate = dueDate,
         Notes = request.Notes,
         Status = request.Status,
         CreatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? "Admin" : request.CreatedBy,
         UpdatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? "Admin" : request.CreatedBy,
-        CreatedDate = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Utc),
-        UpdatedDate = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Utc),
+        CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
+        UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
         Items = items,
         TotalAmount = items.Sum(i => i.Amount),
         TaxAmount = items.Sum(i => i.TaxAmount),
@@ -452,14 +456,18 @@ async Task<IResult> UpdateInvoice(Guid id, InvoiceRequest request, ErpDbContext 
         item.InvoiceId = invoice.InvoiceId;
     }
 
+    // Parse dates properly for PostgreSQL
+    var invoiceDate = DateTime.SpecifyKind(DateTime.Parse(request.InvoiceDate), DateTimeKind.Utc);
+    var dueDate = DateTime.SpecifyKind(DateTime.Parse(request.DueDate), DateTimeKind.Utc);
+
     invoice.InvoiceNumber = request.InvoiceNumber.Trim();
     invoice.CompanyId = request.CompanyId;
-    invoice.InvoiceDate = request.InvoiceDate;
-    invoice.DueDate = request.DueDate;
+    invoice.InvoiceDate = invoiceDate;
+    invoice.DueDate = dueDate;
     invoice.Notes = request.Notes;
     invoice.Status = request.Status;
     invoice.UpdatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? invoice.UpdatedBy : request.CreatedBy;
-    invoice.UpdatedDate = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Utc);
+    invoice.UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
 
     var existingItems = await db.InvoiceItems.Where(ii => ii.InvoiceId == invoice.InvoiceId).ToListAsync();
     db.InvoiceItems.RemoveRange(existingItems);
