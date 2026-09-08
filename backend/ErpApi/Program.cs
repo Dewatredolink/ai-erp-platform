@@ -407,9 +407,9 @@ async Task<IResult> CreateInvoice(InvoiceRequest request, ErpDbContext db)
 
     var items = BuildInvoiceItems(request.Items);
 
-    // Parse dates properly for PostgreSQL
-    var invoiceDate = DateTime.SpecifyKind(DateTime.Parse(request.InvoiceDate), DateTimeKind.Utc);
-    var dueDate = DateTime.SpecifyKind(DateTime.Parse(request.DueDate), DateTimeKind.Utc);
+    // Parse dates properly for PostgreSQL - use ParseExact with 'o' format for ISO 8601
+    var invoiceDate = DateTime.ParseExact(request.InvoiceDate, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
+    var dueDate = DateTime.ParseExact(request.DueDate, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
 
     var invoice = new Invoice
     {
@@ -456,9 +456,9 @@ async Task<IResult> UpdateInvoice(Guid id, InvoiceRequest request, ErpDbContext 
         item.InvoiceId = invoice.InvoiceId;
     }
 
-    // Parse dates properly for PostgreSQL
-    var invoiceDate = DateTime.SpecifyKind(DateTime.Parse(request.InvoiceDate), DateTimeKind.Utc);
-    var dueDate = DateTime.SpecifyKind(DateTime.Parse(request.DueDate), DateTimeKind.Utc);
+    // Parse dates properly for PostgreSQL - use ParseExact with 'o' format for ISO 8601
+    var invoiceDate = DateTime.ParseExact(request.InvoiceDate, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
+    var dueDate = DateTime.ParseExact(request.DueDate, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
 
     invoice.InvoiceNumber = request.InvoiceNumber.Trim();
     invoice.CompanyId = request.CompanyId;
