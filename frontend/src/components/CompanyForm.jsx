@@ -13,11 +13,13 @@ function CompanyForm({ company, onSubmit, onCancel }) {
     website: company?.website ?? '',
     gstin: company?.gstin ?? '',
     pan: company?.pan ?? '',
+
     drugLicenceNumber: company?.drugLicenceNumber ?? '',
     udogAadhaar: company?.udogAadhaar ?? '',
     aadhaarNumber: company?.aadhaarNumber ?? '',
     msmeNumber: company?.msmeNumber ?? '',
     fssaiNumber: company?.fssaiNumber ?? '',
+
     createdBy: company?.createdBy ?? 'Admin',
     updatedBy: company?.updatedBy ?? 'Admin',
   });
@@ -166,56 +168,7 @@ function CompanyForm({ company, onSubmit, onCancel }) {
             placeholder="Enter PAN"
           />
 
-          <label htmlFor="drugLicenceNumber">Drug Licence Number</label>
-          <input
-            id="drugLicenceNumber"
-            type="text"
-            name="drugLicenceNumber"
-            value={formData.drugLicenceNumber}
-            onChange={handleChange}
-            placeholder="Enter Drug Licence Number"
-          />
-
-          <label htmlFor="udogAadhaar">UDOG Aadhaar</label>
-          <input
-            id="udogAadhaar"
-            type="text"
-            name="udogAadhaar"
-            value={formData.udogAadhaar}
-            onChange={handleChange}
-            placeholder="Enter UDOG Aadhaar"
-          />
-
-          <label htmlFor="aadhaarNumber">Aadhaar Number</label>
-          <input
-            id="aadhaarNumber"
-            type="text"
-            name="aadhaarNumber"
-            value={formData.aadhaarNumber}
-            onChange={handleChange}
-            placeholder="Enter Aadhaar Number"
-          />
-
-          <label htmlFor="msmeNumber">MSME Number</label>
-          <input
-            id="msmeNumber"
-            type="text"
-            name="msmeNumber"
-            value={formData.msmeNumber}
-            onChange={handleChange}
-            placeholder="Enter MSME Number"
-          />
-
-          <label htmlFor="fssaiNumber">FSSAI Number</label>
-          <input
-            id="fssaiNumber"
-            type="text"
-            name="fssaiNumber"
-            value={formData.fssaiNumber}
-            onChange={handleChange}
-            placeholder="Enter FSSAI Number"
-          />
-
+7
           {error && (
             <p className="form-error" role="alert">
               {error}
