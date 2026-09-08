@@ -406,8 +406,8 @@ async Task<IResult> CreateInvoice(InvoiceRequest request, ErpDbContext db)
     var items = BuildInvoiceItems(request.Items);
 
     // Parse dates and explicitly set Kind to Utc
-    var invoiceDate = DateTime.SpecifyKind(DateTime.Parse(request.InvoiceDate), DateTimeKind.Utc);
-    var dueDate = DateTime.SpecifyKind(DateTime.Parse(request.DueDate), DateTimeKind.Utc);
+    var invoiceDate = DateTime.SpecifyKind(DateTime.Parse(request.InvoiceDate.ToString()), DateTimeKind.Utc);
+    var dueDate = DateTime.SpecifyKind(DateTime.Parse(request.DueDate.ToString()), DateTimeKind.Utc);
 
     var invoice = new Invoice
     {
@@ -455,8 +455,8 @@ async Task<IResult> UpdateInvoice(Guid id, InvoiceRequest request, ErpDbContext 
     }
 
     // Parse dates and explicitly set Kind to Utc
-    var invoiceDate = DateTime.SpecifyKind(DateTime.Parse(request.InvoiceDate), DateTimeKind.Utc);
-    var dueDate = DateTime.SpecifyKind(DateTime.Parse(request.DueDate), DateTimeKind.Utc);
+    var invoiceDate = DateTime.SpecifyKind(DateTime.Parse(request.InvoiceDate.ToString()), DateTimeKind.Utc);
+    var dueDate = DateTime.SpecifyKind(DateTime.Parse(request.DueDate.ToString()), DateTimeKind.Utc);
 
     invoice.InvoiceNumber = request.InvoiceNumber.Trim();
     invoice.CompanyId = request.CompanyId;
