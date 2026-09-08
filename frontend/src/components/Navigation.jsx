@@ -1,7 +1,16 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { isAuthenticated, logout } from '../services/authService';
 import './Navigation.css';
 
 function Navigation() {
+  const navigate = useNavigate();
+  const authenticated = isAuthenticated();
+
+  async function handleLogout() {
+    await logout();
+    navigate('/login', { replace: true });
+  }
+
   return (
     <header className="app-header">
       <div className="app-header__title">AI ERP Platform</div>
@@ -13,6 +22,11 @@ function Navigation() {
         >
           Companies
         </NavLink>
+        {authenticated && (
+          <button type="button" className="nav-link nav-link--button" onClick={handleLogout}>
+            Logout
+          </button>
+        )}
       </nav>
     </header>
   );
