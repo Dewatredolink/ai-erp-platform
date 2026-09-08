@@ -1,0 +1,32 @@
+Node modules
+node_modules/ npm-debug.log package-lock.json
+
+.NET
+bin/ obj/ .vs/ .vscode/ *.user *.suo *.sln.docstates
+
+Environment files
+.env .env.local .env.*.local
+
+IDE
+.idea/ *.swp *.swo *~ .DS_Store
+
+Logs
+logs/ *.log
+
+OS
+Thumbs.db .DS_Store
+
+Database
+*.db *.sqlite
+
+Build outputs
+dist/ build/
+
+Dependencies
+vendor/ .bundle/
+
+Testing
+coverage/ .nyc_output/
+
+Temp files
+tmp/ temp/
