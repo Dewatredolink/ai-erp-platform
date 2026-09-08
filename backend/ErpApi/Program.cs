@@ -8,6 +8,7 @@ using ErpApi.Models;
 using ErpApi.Models.Auth;
 using ErpApi.Models.Invoicing;
 using ErpApi.Services;
+using ErpApi.Utilities;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +38,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
+    options.SerializerOptions.Converters.Add(new UtcDateTimeConverter());
     options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     options.SerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
