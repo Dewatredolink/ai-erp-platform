@@ -22,6 +22,12 @@ function Navigation() {
         >
           Companies
         </NavLink>
+        <NavLink
+          to="/invoices"
+          className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+        >
+          Invoices
+        </NavLink>
         {authenticated && (
           <button type="button" className="nav-link nav-link--button" onClick={handleLogout}>
             Logout

@@ -2,6 +2,9 @@ import { Route, BrowserRouter, Routes } from 'react-router-dom';
 import Navigation from './components/Navigation';
 import ProtectedRoute from './components/ProtectedRoute';
 import CompaniesPage from './pages/CompaniesPage';
+import InvoiceListPage from './pages/InvoiceListPage';
+import InvoiceFormPage from './pages/InvoiceFormPage';
+import InvoiceDetailsPage from './pages/InvoiceDetailsPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import './App.css';
@@ -19,6 +22,38 @@ function App() {
             element={
               <ProtectedRoute>
                 <CompaniesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/invoices"
+            element={
+              <ProtectedRoute>
+                <InvoiceListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/invoices/new"
+            element={
+              <ProtectedRoute>
+                <InvoiceFormPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/invoices/:id"
+            element={
+              <ProtectedRoute>
+                <InvoiceDetailsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/invoices/:id/edit"
+            element={
+              <ProtectedRoute>
+                <InvoiceFormPage />
               </ProtectedRoute>
             }
           />
