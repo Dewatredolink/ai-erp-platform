@@ -1,32 +1,52 @@
-Node modules
-node_modules/ npm-debug.log package-lock.json
+# Node modules
+node_modules/
+npm-debug.log
 
-.NET
-bin/ obj/ .vs/ .vscode/ *.user *.suo *.sln.docstates
+# .NET
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln.docstates
 
-Environment files
-.env .env.local .env.*.local
+# Environment files
+.env
+.env.local
+.env.*.local
 
-IDE
-.idea/ *.swp *.swo *~ .DS_Store
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
 
-Logs
-logs/ *.log
+# Logs
+logs/
+*.log
 
-OS
-Thumbs.db .DS_Store
+# OS
+Thumbs.db
+.DS_Store
 
-Database
-*.db *.sqlite
+# Database
+*.db
+*.sqlite
 
-Build outputs
-dist/ build/
+# Build outputs
+dist/
+build/
 
-Dependencies
-vendor/ .bundle/
+# Dependencies
+vendor/
+.bundle/
 
-Testing
-coverage/ .nyc_output/
+# Testing
+coverage/
+.nyc_output/
 
-Temp files
-tmp/ temp/
+# Temp files
+tmp/
+temp/
