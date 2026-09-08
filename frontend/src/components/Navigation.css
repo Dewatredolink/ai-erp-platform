@@ -29,7 +29,24 @@
   background-color: #374151;
 }
 
+.nav-link--button {
+  background: none;
+  border: none;
+  color: #d1d5db;
+  text-decoration: none;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.nav-link--button:hover {
+  color: #ffffff;
+  background-color: #374151;
+}
+
 .nav-link--active {
   color: #ffffff;
   background-color: #2563eb;
 }
+
