@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import InvoiceDashboard from '../components/InvoiceDashboard';
 import { deleteInvoice, downloadPDF, getInvoices } from '../services/invoiceService';
+import { openInvoicePrintWindow } from '../services/printService';
 import './InvoiceList.css';
 
 const STATUS_OPTIONS = ['Draft', 'Sent', 'Paid', 'Overdue'];
@@ -65,6 +66,15 @@ function InvoiceListPage() {
       await downloadPDF(invoice.invoiceId, invoice.invoiceNumber);
     } catch (err) {
       setError('Failed to download invoice PDF.');
+      console.error(err);
+    }
+  }
+
+  function handlePrintClick(invoice) {
+    try {
+      openInvoicePrintWindow(invoice, invoice.company);
+    } catch (err) {
+      setError('Failed to open print dialog.');
       console.error(err);
     }
   }
@@ -156,6 +166,13 @@ function InvoiceListPage() {
                       onClick={() => navigate(`/invoices/${invoice.invoiceId}/edit`)}
                     >
                       Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--secondary"
+                      onClick={() => handlePrintClick(invoice)}
+                    >
+                      Print
                     </button>
                     <button
                       type="button"
