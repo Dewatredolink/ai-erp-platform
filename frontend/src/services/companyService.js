@@ -29,7 +29,7 @@ export async function getCompany(id) {
 
 /**
  * Create a new company.
- * @param {{ name: string }} company
+ * @param {Object} company - Company data with fields like companyName, address, city, state, etc.
  */
 export async function createCompany(company) {
   const response = await apiClient.post('/companies', company);
@@ -39,7 +39,7 @@ export async function createCompany(company) {
 /**
  * Update an existing company.
  * @param {number|string} id
- * @param {{ name: string }} company
+ * @param {Object} company - Updated company data
  */
 export async function updateCompany(id, company) {
   const response = await apiClient.put(`/companies/${id}`, company);
