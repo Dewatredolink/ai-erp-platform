@@ -1,14 +1,3 @@
-using System.Security.Claims;
-using System.Text;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using ErpApi.Data;
-using ErpApi.Models;
-using ErpApi.Models.Auth;
-using ErpApi.Models.Invoicing;
-using ErpApi.Services;
-
 var builder = WebApplication.CreateBuilder(args);
 
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? new JwtSettings();
@@ -41,8 +30,11 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
 
-var connectionString = "Host=localhost;Port=5432;Database=erp_db;Username=postgres;Password=Dewa@2025";
-builder.Services.AddDbContext<ErpDbContext>(options => options.UseNpgsql(connectionString));
+var connectionString = "Host=localhost;Port=5432;Database=erp_db;Username=postgres;Password=Dewa@2025;Timezone=UTC;";
+builder.Services.AddDbContext<ErpDbContext>(options => 
+{
+    options.UseNpgsql(connectionString, o => o.UseNodaTime());
+});
 
 builder.Services.AddCors(options =>
 {
@@ -108,7 +100,6 @@ async Task<IResult> Register(RegisterRequest request, ErpDbContext db)
 
     if (existingUser != null)
     {
-        // Avoid revealing which field (username/email) already exists.
         return Results.Conflict(new { message = "Unable to register with the provided credentials." });
     }
 
@@ -143,7 +134,6 @@ async Task<IResult> Login(LoginRequest request, ErpDbContext db, JwtTokenService
 
     if (user == null || !user.IsActive || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
     {
-        // Generic message so we don't reveal whether the account exists.
         return Results.Json(new { message = "Invalid username/email or password." }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -161,8 +151,6 @@ async Task<IResult> Login(LoginRequest request, ErpDbContext db, JwtTokenService
 
 IResult Logout()
 {
-    // Token invalidation is handled client-side by discarding the JWT.
-    // This endpoint exists so clients have a consistent logout call to make.
     return Results.Ok(new { message = "Logged out successfully." });
 }
 
@@ -407,17 +395,14 @@ async Task<IResult> CreateInvoice(InvoiceRequest request, ErpDbContext db)
 
     var items = BuildInvoiceItems(request.Items);
 
-    // Convert string dates to UTC DateTime with midnight time
-    var invoiceDate = DateTime.Parse(request.InvoiceDate).ToUniversalTime();
-    var dueDate = DateTime.Parse(request.DueDate).ToUniversalTime();
-
+    // Use UtcNow for all timestamps - they're already UTC Kind
     var invoice = new Invoice
     {
         InvoiceId = Guid.NewGuid(),
         InvoiceNumber = request.InvoiceNumber.Trim(),
         CompanyId = request.CompanyId,
-        InvoiceDate = invoiceDate,
-        DueDate = dueDate,
+        InvoiceDate = DateTime.Parse(request.InvoiceDate, null, System.Globalization.DateTimeStyles.AssumeUniversal),
+        DueDate = DateTime.Parse(request.DueDate, null, System.Globalization.DateTimeStyles.AssumeUniversal),
         Notes = request.Notes,
         Status = request.Status,
         CreatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? "Admin" : request.CreatedBy,
@@ -456,14 +441,10 @@ async Task<IResult> UpdateInvoice(Guid id, InvoiceRequest request, ErpDbContext 
         item.InvoiceId = invoice.InvoiceId;
     }
 
-    // Convert string dates to UTC DateTime with midnight time
-    var invoiceDate = DateTime.Parse(request.InvoiceDate).ToUniversalTime();
-    var dueDate = DateTime.Parse(request.DueDate).ToUniversalTime();
-
     invoice.InvoiceNumber = request.InvoiceNumber.Trim();
     invoice.CompanyId = request.CompanyId;
-    invoice.InvoiceDate = invoiceDate;
-    invoice.DueDate = dueDate;
+    invoice.InvoiceDate = DateTime.Parse(request.InvoiceDate, null, System.Globalization.DateTimeStyles.AssumeUniversal);
+    invoice.DueDate = DateTime.Parse(request.DueDate, null, System.Globalization.DateTimeStyles.AssumeUniversal);
     invoice.Notes = request.Notes;
     invoice.Status = request.Status;
     invoice.UpdatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? invoice.UpdatedBy : request.CreatedBy;
