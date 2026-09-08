@@ -19,9 +19,9 @@ namespace ErpApi.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // Value converter for DateTime to UTC
+            // Value converter for DateTime to UTC - ensure Kind is always set to Utc
             var converter = new ValueConverter<DateTime, DateTime>(
-                v => v.ToUniversalTime(),
+                v => v.Kind == DateTimeKind.Utc ? v : DateTime.SpecifyKind(v, DateTimeKind.Utc),
                 v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
 
             modelBuilder.Entity<Company>()
