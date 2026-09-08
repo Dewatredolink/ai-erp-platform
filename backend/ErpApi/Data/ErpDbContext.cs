@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ErpApi.Models;
 
 namespace ErpApi.Data
@@ -19,25 +18,12 @@ namespace ErpApi.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // Value converter for DateTime to UTC - ensure Kind is always set to Utc
-            var converter = new ValueConverter<DateTime, DateTime>(
-                v => v.Kind == DateTimeKind.Utc ? v : DateTime.SpecifyKind(v, DateTimeKind.Utc),
-                v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
-
             modelBuilder.Entity<Company>()
                 .HasKey(c => c.CompanyId);
 
             modelBuilder.Entity<Company>()
                 .Property(c => c.CompanyName)
                 .IsRequired();
-
-            modelBuilder.Entity<Company>()
-                .Property(c => c.CreatedDate)
-                .HasConversion(converter);
-
-            modelBuilder.Entity<Company>()
-                .Property(c => c.UpdatedDate)
-                .HasConversion(converter);
 
             modelBuilder.Entity<User>()
                 .HasKey(u => u.UserId);
@@ -62,14 +48,6 @@ namespace ErpApi.Data
                 .HasIndex(u => u.Email)
                 .IsUnique();
 
-            modelBuilder.Entity<User>()
-                .Property(u => u.CreatedDate)
-                .HasConversion(converter);
-
-            modelBuilder.Entity<User>()
-                .Property(u => u.UpdatedDate)
-                .HasConversion(converter);
-
             modelBuilder.Entity<Invoice>()
                 .HasKey(i => i.InvoiceId);
 
@@ -92,22 +70,6 @@ namespace ErpApi.Data
             modelBuilder.Entity<Invoice>()
                 .Property(i => i.GrandTotal)
                 .HasColumnType("decimal(18,2)");
-
-            modelBuilder.Entity<Invoice>()
-                .Property(i => i.InvoiceDate)
-                .HasConversion(converter);
-
-            modelBuilder.Entity<Invoice>()
-                .Property(i => i.DueDate)
-                .HasConversion(converter);
-
-            modelBuilder.Entity<Invoice>()
-                .Property(i => i.CreatedDate)
-                .HasConversion(converter);
-
-            modelBuilder.Entity<Invoice>()
-                .Property(i => i.UpdatedDate)
-                .HasConversion(converter);
 
             modelBuilder.Entity<Invoice>()
                 .HasOne(i => i.Company)
@@ -141,10 +103,6 @@ namespace ErpApi.Data
             modelBuilder.Entity<InvoiceItem>()
                 .Property(ii => ii.TaxAmount)
                 .HasColumnType("decimal(18,2)");
-
-            modelBuilder.Entity<InvoiceItem>()
-                .Property(ii => ii.CreatedDate)
-                .HasConversion(converter);
 
             modelBuilder.Entity<InvoiceItem>()
                 .HasOne(ii => ii.Invoice)
