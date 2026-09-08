@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { deleteInvoice, downloadPDF, getInvoiceById } from '../services/invoiceService';
+import { openInvoicePrintWindow } from '../services/printService';
 import './InvoiceDetails.css';
 
 function InvoiceDetailsPage() {
@@ -51,6 +52,16 @@ function InvoiceDetailsPage() {
     }
   }
 
+  function handlePrint() {
+    if (!invoice) return;
+    try {
+      openInvoicePrintWindow(invoice, invoice.company);
+    } catch (err) {
+      setError('Failed to open print dialog.');
+      console.error(err);
+    }
+  }
+
   if (isLoading) {
     return <p>Loading invoice...</p>;
   }
@@ -64,7 +75,7 @@ function InvoiceDetailsPage() {
       <div className="invoice-details-page__toolbar">
         <h1>Invoice {invoice.invoiceNumber}</h1>
         <div className="invoice-details-page__actions">
-          <button type="button" className="btn btn--secondary" onClick={() => window.print()}>
+          <button type="button" className="btn btn--secondary" onClick={handlePrint}>
             Print
           </button>
           <button type="button" className="btn btn--secondary" onClick={handleDownload}>
