@@ -117,8 +117,8 @@ async Task<IResult> Register(RegisterRequest request, ErpDbContext db)
         Username = normalizedUsername,
         Email = normalizedEmail,
         PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-        CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
-        UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
+        CreatedDate = DateTime.UtcNow,
+        UpdatedDate = DateTime.UtcNow,
         IsActive = true,
     };
 
@@ -197,7 +197,7 @@ async Task<IResult> GetCompanyById(int id, ErpDbContext db)
 
 async Task<IResult> CreateCompany(Company company, ErpDbContext db)
 {
-    company.CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+    company.CreatedDate = DateTime.UtcNow;
     db.Companies.Add(company);
     await db.SaveChangesAsync();
     return Results.Created($"/api/companies/{company.CompanyId}", company);
@@ -224,7 +224,7 @@ async Task<IResult> UpdateCompany(int id, Company updatedCompany, ErpDbContext d
     company.MSMENumber = updatedCompany.MSMENumber ?? company.MSMENumber;
     company.FSSAINumber = updatedCompany.FSSAINumber ?? company.FSSAINumber;
     company.IsActive = updatedCompany.IsActive;
-    company.UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+    company.UpdatedDate = DateTime.UtcNow;
     
     await db.SaveChangesAsync();
     return Results.Ok(company);
@@ -311,7 +311,7 @@ List<InvoiceItem> BuildInvoiceItems(List<InvoiceItemRequest> requestItems)
             Amount = amount,
             TaxRate = item.TaxRate,
             TaxAmount = taxAmount,
-            CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
+            CreatedDate = DateTime.UtcNow,
         };
     }).ToList();
 }
@@ -407,9 +407,9 @@ async Task<IResult> CreateInvoice(InvoiceRequest request, ErpDbContext db)
 
     var items = BuildInvoiceItems(request.Items);
 
-    // Parse dates properly for PostgreSQL - use ParseExact with 'o' format for ISO 8601
-    var invoiceDate = DateTime.ParseExact(request.InvoiceDate, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
-    var dueDate = DateTime.ParseExact(request.DueDate, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
+    // Convert string dates to UTC DateTime with midnight time
+    var invoiceDate = DateTime.Parse(request.InvoiceDate).ToUniversalTime();
+    var dueDate = DateTime.Parse(request.DueDate).ToUniversalTime();
 
     var invoice = new Invoice
     {
@@ -422,8 +422,8 @@ async Task<IResult> CreateInvoice(InvoiceRequest request, ErpDbContext db)
         Status = request.Status,
         CreatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? "Admin" : request.CreatedBy,
         UpdatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? "Admin" : request.CreatedBy,
-        CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
-        UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
+        CreatedDate = DateTime.UtcNow,
+        UpdatedDate = DateTime.UtcNow,
         Items = items,
         TotalAmount = items.Sum(i => i.Amount),
         TaxAmount = items.Sum(i => i.TaxAmount),
@@ -456,9 +456,9 @@ async Task<IResult> UpdateInvoice(Guid id, InvoiceRequest request, ErpDbContext 
         item.InvoiceId = invoice.InvoiceId;
     }
 
-    // Parse dates properly for PostgreSQL - use ParseExact with 'o' format for ISO 8601
-    var invoiceDate = DateTime.ParseExact(request.InvoiceDate, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
-    var dueDate = DateTime.ParseExact(request.DueDate, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
+    // Convert string dates to UTC DateTime with midnight time
+    var invoiceDate = DateTime.Parse(request.InvoiceDate).ToUniversalTime();
+    var dueDate = DateTime.Parse(request.DueDate).ToUniversalTime();
 
     invoice.InvoiceNumber = request.InvoiceNumber.Trim();
     invoice.CompanyId = request.CompanyId;
@@ -467,7 +467,7 @@ async Task<IResult> UpdateInvoice(Guid id, InvoiceRequest request, ErpDbContext 
     invoice.Notes = request.Notes;
     invoice.Status = request.Status;
     invoice.UpdatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? invoice.UpdatedBy : request.CreatedBy;
-    invoice.UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+    invoice.UpdatedDate = DateTime.UtcNow;
 
     var existingItems = await db.InvoiceItems.Where(ii => ii.InvoiceId == invoice.InvoiceId).ToListAsync();
     db.InvoiceItems.RemoveRange(existingItems);
