@@ -1,0 +1,34 @@
+.companies-page {
+  padding: 1.5rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.companies-page__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.companies-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #ffffff;
+}
+
+.companies-table th,
+.companies-table td {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.companies-table th {
+  background-color: #f3f4f6;
+  font-weight: 600;
+}
+
+.companies-table td .btn {
+  margin-right: 0.5rem;
+}

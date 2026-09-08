@@ -1,0 +1,35 @@
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  background-color: #1f2937;
+  color: #ffffff;
+}
+
+.app-header__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.app-header__nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.nav-link {
+  color: #d1d5db;
+  text-decoration: none;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+}
+
+.nav-link:hover {
+  color: #ffffff;
+  background-color: #374151;
+}
+
+.nav-link--active {
+  color: #ffffff;
+  background-color: #2563eb;
+}
