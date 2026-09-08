@@ -44,12 +44,12 @@ function CompaniesPage() {
   }
 
   async function handleDeleteClick(company) {
-    const confirmed = window.confirm(`Delete company "${company.name}"?`);
+    const confirmed = window.confirm(`Delete company "${company.companyName}"?`);
     if (!confirmed) {
       return;
     }
     try {
-      await deleteCompany(company.id);
+      await deleteCompany(company.companyId);
       await loadCompanies();
     } catch (err) {
       setError('Failed to delete company.');
@@ -60,7 +60,7 @@ function CompaniesPage() {
   async function handleFormSubmit(companyData) {
     try {
       if (editingCompany) {
-        await updateCompany(editingCompany.id, companyData);
+        await updateCompany(editingCompany.companyId, companyData);
       } else {
         await createCompany(companyData);
       }
@@ -107,9 +107,9 @@ function CompaniesPage() {
               </tr>
             ) : (
               companies.map((company) => (
-                <tr key={company.id}>
-                  <td>{company.id}</td>
-                  <td>{company.name}</td>
+                <tr key={company.companyId}>
+                  <td>{company.companyId}</td>
+                  <td>{company.companyName}</td>
                   <td>
                     <button
                       type="button"
@@ -135,7 +135,7 @@ function CompaniesPage() {
 
       {isFormOpen && (
         <CompanyForm
-          key={editingCompany?.id ?? 'new'}
+          key={editingCompany?.companyId ?? 'new'}
           company={editingCompany}
           onSubmit={handleFormSubmit}
           onCancel={handleFormCancel}
