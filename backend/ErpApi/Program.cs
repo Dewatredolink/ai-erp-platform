@@ -75,8 +75,9 @@ app.MapPost("/api/companies", CreateCompany).WithName("CreateCompany");
 app.MapPut("/api/companies/{id}", UpdateCompany).WithName("UpdateCompany");
 app.MapDelete("/api/companies/{id}", DeleteCompany).WithName("DeleteCompany");
 
-app.MapGet("/api/invoices", GetAllInvoices).WithName("GetInvoices");
+// Invoice routes - ORDER MATTERS! Put specific routes BEFORE general ones
 app.MapGet("/api/invoices/stats", GetInvoiceStats).WithName("GetInvoiceStats");
+app.MapGet("/api/invoices", GetAllInvoices).WithName("GetInvoices");
 app.MapGet("/api/invoices/{id}", GetInvoiceById).WithName("GetInvoiceById");
 app.MapPost("/api/invoices", CreateInvoice).WithName("CreateInvoice");
 app.MapPut("/api/invoices/{id}", UpdateInvoice).WithName("UpdateInvoice");
