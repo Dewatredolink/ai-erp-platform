@@ -1,3 +1,14 @@
+using System.Security.Claims;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using ErpApi.Data;
+using ErpApi.Models;
+using ErpApi.Models.Auth;
+using ErpApi.Models.Invoicing;
+using ErpApi.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? new JwtSettings();
@@ -31,10 +42,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 var connectionString = "Host=localhost;Port=5432;Database=erp_db;Username=postgres;Password=Dewa@2025;Timezone=UTC;";
-builder.Services.AddDbContext<ErpDbContext>(options => 
-{
-    options.UseNpgsql(connectionString, o => o.UseNodaTime());
-});
+builder.Services.AddDbContext<ErpDbContext>(options => options.UseNpgsql(connectionString));
 
 builder.Services.AddCors(options =>
 {
@@ -108,8 +116,8 @@ async Task<IResult> Register(RegisterRequest request, ErpDbContext db)
         Username = normalizedUsername,
         Email = normalizedEmail,
         PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-        CreatedDate = DateTime.UtcNow,
-        UpdatedDate = DateTime.UtcNow,
+        CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
+        UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
         IsActive = true,
     };
 
@@ -185,7 +193,7 @@ async Task<IResult> GetCompanyById(int id, ErpDbContext db)
 
 async Task<IResult> CreateCompany(Company company, ErpDbContext db)
 {
-    company.CreatedDate = DateTime.UtcNow;
+    company.CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
     db.Companies.Add(company);
     await db.SaveChangesAsync();
     return Results.Created($"/api/companies/{company.CompanyId}", company);
@@ -212,7 +220,7 @@ async Task<IResult> UpdateCompany(int id, Company updatedCompany, ErpDbContext d
     company.MSMENumber = updatedCompany.MSMENumber ?? company.MSMENumber;
     company.FSSAINumber = updatedCompany.FSSAINumber ?? company.FSSAINumber;
     company.IsActive = updatedCompany.IsActive;
-    company.UpdatedDate = DateTime.UtcNow;
+    company.UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
     
     await db.SaveChangesAsync();
     return Results.Ok(company);
@@ -299,7 +307,7 @@ List<InvoiceItem> BuildInvoiceItems(List<InvoiceItemRequest> requestItems)
             Amount = amount,
             TaxRate = item.TaxRate,
             TaxAmount = taxAmount,
-            CreatedDate = DateTime.UtcNow,
+            CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
         };
     }).ToList();
 }
@@ -395,20 +403,23 @@ async Task<IResult> CreateInvoice(InvoiceRequest request, ErpDbContext db)
 
     var items = BuildInvoiceItems(request.Items);
 
-    // Use UtcNow for all timestamps - they're already UTC Kind
+    // Parse dates and explicitly set Kind to Utc
+    var invoiceDate = DateTime.SpecifyKind(DateTime.Parse(request.InvoiceDate), DateTimeKind.Utc);
+    var dueDate = DateTime.SpecifyKind(DateTime.Parse(request.DueDate), DateTimeKind.Utc);
+
     var invoice = new Invoice
     {
         InvoiceId = Guid.NewGuid(),
         InvoiceNumber = request.InvoiceNumber.Trim(),
         CompanyId = request.CompanyId,
-        InvoiceDate = DateTime.Parse(request.InvoiceDate, null, System.Globalization.DateTimeStyles.AssumeUniversal),
-        DueDate = DateTime.Parse(request.DueDate, null, System.Globalization.DateTimeStyles.AssumeUniversal),
+        InvoiceDate = invoiceDate,
+        DueDate = dueDate,
         Notes = request.Notes,
         Status = request.Status,
         CreatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? "Admin" : request.CreatedBy,
         UpdatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? "Admin" : request.CreatedBy,
-        CreatedDate = DateTime.UtcNow,
-        UpdatedDate = DateTime.UtcNow,
+        CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
+        UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
         Items = items,
         TotalAmount = items.Sum(i => i.Amount),
         TaxAmount = items.Sum(i => i.TaxAmount),
@@ -441,14 +452,18 @@ async Task<IResult> UpdateInvoice(Guid id, InvoiceRequest request, ErpDbContext 
         item.InvoiceId = invoice.InvoiceId;
     }
 
+    // Parse dates and explicitly set Kind to Utc
+    var invoiceDate = DateTime.SpecifyKind(DateTime.Parse(request.InvoiceDate), DateTimeKind.Utc);
+    var dueDate = DateTime.SpecifyKind(DateTime.Parse(request.DueDate), DateTimeKind.Utc);
+
     invoice.InvoiceNumber = request.InvoiceNumber.Trim();
     invoice.CompanyId = request.CompanyId;
-    invoice.InvoiceDate = DateTime.Parse(request.InvoiceDate, null, System.Globalization.DateTimeStyles.AssumeUniversal);
-    invoice.DueDate = DateTime.Parse(request.DueDate, null, System.Globalization.DateTimeStyles.AssumeUniversal);
+    invoice.InvoiceDate = invoiceDate;
+    invoice.DueDate = dueDate;
     invoice.Notes = request.Notes;
     invoice.Status = request.Status;
     invoice.UpdatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? invoice.UpdatedBy : request.CreatedBy;
-    invoice.UpdatedDate = DateTime.UtcNow;
+    invoice.UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
 
     var existingItems = await db.InvoiceItems.Where(ii => ii.InvoiceId == invoice.InvoiceId).ToListAsync();
     db.InvoiceItems.RemoveRange(existingItems);
