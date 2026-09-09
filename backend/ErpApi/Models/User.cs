@@ -11,5 +11,7 @@ namespace ErpApi.Models
         public bool IsActive { get; set; } = true;
 
         public List<UserRole> UserRoles { get; set; } = new();
+        public List<UserBranch> UserBranches { get; set; } = new();
+        public List<UserCompany> UserCompanies { get; set; } = new();
     }
 }

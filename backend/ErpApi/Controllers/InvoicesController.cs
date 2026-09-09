@@ -17,9 +17,14 @@ public class InvoicesController : ControllerBase
 {
     [Authorize(Policy = PermissionConstants.InvoiceRead)]
     [HttpGet("stats")]
-    public async Task<IActionResult> GetInvoiceStats([FromServices] ErpDbContext db)
+    public async Task<IActionResult> GetInvoiceStats(
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService)
     {
-        var invoices = await db.Invoices.ToListAsync();
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var invoices = await currentUserScopeService
+            .ApplyInvoiceScope(db.Invoices.AsNoTracking(), scope)
+            .ToListAsync();
 
         var totalRevenue = invoices.Where(i => i.ApprovalStatus == InvoiceApprovalStatus.Paid || i.Status == InvoiceStatus.Paid).Sum(i => i.GrandTotal);
         var pendingCount = invoices.Count(i =>
@@ -43,6 +48,7 @@ public class InvoicesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAllInvoices(
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? status = null,
@@ -53,7 +59,14 @@ public class InvoicesController : ControllerBase
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 20;
 
-        var query = db.Invoices.Include(i => i.Company).AsQueryable();
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var query = currentUserScopeService.ApplyInvoiceScope(
+                db.Invoices
+                    .Include(i => i.Company)
+                    .ThenInclude(c => c!.Branch)
+                    .AsNoTracking(),
+                scope)
+            .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<InvoiceStatus>(status, true, out var statusFilter))
         {
@@ -95,11 +108,18 @@ public class InvoicesController : ControllerBase
 
     [Authorize(Policy = PermissionConstants.InvoiceRead)]
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> GetInvoiceById(Guid id, [FromServices] ErpDbContext db)
+    public async Task<IActionResult> GetInvoiceById(
+        Guid id,
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService)
     {
-        var invoice = await db.Invoices
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var invoice = await currentUserScopeService
+            .ApplyInvoiceScope(db.Invoices
             .Include(i => i.Company)
+            .ThenInclude(c => c!.Branch)
             .Include(i => i.Items)
+            , scope)
             .FirstOrDefaultAsync(i => i.InvoiceId == id);
 
         return invoice == null ? NotFound() : Ok(ToResponse(invoice, includeItems: true));
@@ -110,9 +130,17 @@ public class InvoicesController : ControllerBase
     public async Task<IActionResult> CreateInvoice(
         [FromBody] InvoiceRequest request,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] CurrentUserService currentUserService,
         [FromServices] AuditService auditService)
     {
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var companyAccessResult = await EnsureCompanyAccessAsync(request.CompanyId, db, currentUserScopeService, scope);
+        if (companyAccessResult != null)
+        {
+            return companyAccessResult;
+        }
+
         var validationError = await ValidateInvoiceRequest(request, db, null);
         if (validationError != null)
         {
@@ -161,11 +189,15 @@ public class InvoicesController : ControllerBase
         Guid id,
         [FromBody] InvoiceRequest request,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] CurrentUserService currentUserService,
         [FromServices] AuditService auditService)
     {
-        var invoice = await db.Invoices
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var invoice = await currentUserScopeService
+            .ApplyInvoiceScope(db.Invoices
             .Include(i => i.Items)
+            , scope)
             .FirstOrDefaultAsync(i => i.InvoiceId == id);
 
         if (invoice == null) return NotFound();
@@ -173,6 +205,12 @@ public class InvoicesController : ControllerBase
         if (!CanEditInvoice(invoice))
         {
             return Conflict(new { message = $"Invoice cannot be edited while in '{invoice.ApprovalStatus}' state." });
+        }
+
+        var companyAccessResult = await EnsureCompanyAccessAsync(request.CompanyId, db, currentUserScopeService, scope);
+        if (companyAccessResult != null)
+        {
+            return companyAccessResult;
         }
 
         var validationError = await ValidateInvoiceRequest(request, db, id);
@@ -225,10 +263,14 @@ public class InvoicesController : ControllerBase
     public async Task<IActionResult> DeleteInvoice(
         Guid id,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] AuditService auditService)
     {
-        var invoice = await db.Invoices
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var invoice = await currentUserScopeService
+            .ApplyInvoiceScope(db.Invoices
             .Include(i => i.Items)
+            , scope)
             .FirstOrDefaultAsync(i => i.InvoiceId == id);
 
         if (invoice == null) return NotFound();
@@ -255,12 +297,17 @@ public class InvoicesController : ControllerBase
     public async Task<IActionResult> GenerateInvoicePdf(
         Guid id,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] InvoicePdfService pdfService,
         [FromServices] AuditService auditService)
     {
-        var invoice = await db.Invoices
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var invoice = await currentUserScopeService
+            .ApplyInvoiceScope(db.Invoices
             .Include(i => i.Company)
+            .ThenInclude(c => c!.Branch)
             .Include(i => i.Items)
+            , scope)
             .FirstOrDefaultAsync(i => i.InvoiceId == id);
 
         if (invoice == null) return NotFound();
@@ -281,10 +328,14 @@ public class InvoicesController : ControllerBase
         Guid id,
         [FromBody] InvoiceApprovalActionRequest? request,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] CurrentUserService currentUserService,
         [FromServices] AuditService auditService)
     {
-        var invoice = await db.Invoices.Include(i => i.Items).FirstOrDefaultAsync(i => i.InvoiceId == id);
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var invoice = await currentUserScopeService
+            .ApplyInvoiceScope(db.Invoices.Include(i => i.Items), scope)
+            .FirstOrDefaultAsync(i => i.InvoiceId == id);
         if (invoice == null) return NotFound();
 
         if (invoice.ApprovalStatus != InvoiceApprovalStatus.Draft && invoice.ApprovalStatus != InvoiceApprovalStatus.Rejected)
@@ -327,10 +378,14 @@ public class InvoicesController : ControllerBase
         Guid id,
         [FromBody] InvoiceApprovalActionRequest? request,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] CurrentUserService currentUserService,
         [FromServices] AuditService auditService)
     {
-        var invoice = await db.Invoices.Include(i => i.Items).FirstOrDefaultAsync(i => i.InvoiceId == id);
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var invoice = await currentUserScopeService
+            .ApplyInvoiceScope(db.Invoices.Include(i => i.Items), scope)
+            .FirstOrDefaultAsync(i => i.InvoiceId == id);
         if (invoice == null) return NotFound();
 
         if (invoice.ApprovalStatus != InvoiceApprovalStatus.Submitted)
@@ -373,10 +428,14 @@ public class InvoicesController : ControllerBase
         Guid id,
         [FromBody] InvoiceApprovalActionRequest? request,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] CurrentUserService currentUserService,
         [FromServices] AuditService auditService)
     {
-        var invoice = await db.Invoices.Include(i => i.Items).FirstOrDefaultAsync(i => i.InvoiceId == id);
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var invoice = await currentUserScopeService
+            .ApplyInvoiceScope(db.Invoices.Include(i => i.Items), scope)
+            .FirstOrDefaultAsync(i => i.InvoiceId == id);
         if (invoice == null) return NotFound();
 
         if (invoice.ApprovalStatus != InvoiceApprovalStatus.Submitted)
@@ -419,10 +478,14 @@ public class InvoicesController : ControllerBase
         Guid id,
         [FromBody] InvoiceApprovalActionRequest? request,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] CurrentUserService currentUserService,
         [FromServices] AuditService auditService)
     {
-        var invoice = await db.Invoices.Include(i => i.Items).FirstOrDefaultAsync(i => i.InvoiceId == id);
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var invoice = await currentUserScopeService
+            .ApplyInvoiceScope(db.Invoices.Include(i => i.Items), scope)
+            .FirstOrDefaultAsync(i => i.InvoiceId == id);
         if (invoice == null) return NotFound();
 
         if (invoice.ApprovalStatus != InvoiceApprovalStatus.Approved)
@@ -474,12 +537,6 @@ public class InvoicesController : ControllerBase
         if (request.DueDate < request.InvoiceDate)
         {
             return "Due date must be on or after the invoice date.";
-        }
-
-        var companyExists = await db.Companies.AnyAsync(c => c.CompanyId == request.CompanyId);
-        if (!companyExists)
-        {
-            return "Company does not exist.";
         }
 
         var normalizedNumber = request.InvoiceNumber.Trim();
@@ -545,6 +602,8 @@ public class InvoicesController : ControllerBase
             Company = invoice.Company == null ? null : new CompanyResponse
             {
                 CompanyId = invoice.Company.CompanyId,
+                BranchId = invoice.Company.BranchId,
+                BranchName = invoice.Company.Branch?.Name,
                 CompanyName = invoice.Company.CompanyName,
                 Address = invoice.Company.Address,
                 City = invoice.Company.City,
@@ -657,4 +716,28 @@ public class InvoicesController : ControllerBase
         || invoice.ApprovalStatus == InvoiceApprovalStatus.Rejected;
 
     private static bool CanDeleteInvoice(Invoice invoice) => CanEditInvoice(invoice);
+
+    private static async Task<IActionResult?> EnsureCompanyAccessAsync(
+        int companyId,
+        ErpDbContext db,
+        CurrentUserScopeService currentUserScopeService,
+        CurrentUserScope scope)
+    {
+        var hasAccess = await currentUserScopeService
+            .ApplyCompanyScope(db.Companies.AsNoTracking(), scope)
+            .AnyAsync(company => company.CompanyId == companyId);
+
+        if (hasAccess)
+        {
+            return null;
+        }
+
+        var companyExists = await db.Companies.AsNoTracking().AnyAsync(company => company.CompanyId == companyId);
+        return companyExists
+            ? new ObjectResult(new { message = "You are not authorized to access the requested company." })
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            }
+            : new BadRequestObjectResult(new { message = "Company does not exist." });
+    }
 }

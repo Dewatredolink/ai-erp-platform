@@ -16,17 +16,30 @@ public class CompaniesController : ControllerBase
 {
     [Authorize(Policy = PermissionConstants.CompanyRead)]
     [HttpGet]
-    public async Task<IActionResult> GetAllCompanies([FromServices] ErpDbContext db)
+    public async Task<IActionResult> GetAllCompanies(
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService)
     {
-        var companies = await db.Companies.ToListAsync();
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var companies = await currentUserScopeService
+            .ApplyCompanyScope(db.Companies.Include(c => c.Branch).AsNoTracking(), scope)
+            .ToListAsync();
+
         return Ok(companies.Select(ToResponse));
     }
 
     [Authorize(Policy = PermissionConstants.CompanyRead)]
     [HttpGet("{id:int}")]
-    public async Task<IActionResult> GetCompanyById(int id, [FromServices] ErpDbContext db)
+    public async Task<IActionResult> GetCompanyById(
+        int id,
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService)
     {
-        var company = await db.Companies.FindAsync(id);
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var company = await currentUserScopeService
+            .ApplyCompanyScope(db.Companies.Include(c => c.Branch).AsNoTracking(), scope)
+            .FirstOrDefaultAsync(c => c.CompanyId == id);
+
         return company == null ? NotFound() : Ok(ToResponse(company));
     }
 
@@ -35,12 +48,52 @@ public class CompaniesController : ControllerBase
     public async Task<IActionResult> CreateCompany(
         [FromBody] CompanyRequest request,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] CurrentUserService currentUserService,
         [FromServices] AuditService auditService)
     {
+        var scope = await currentUserScopeService.GetScopeAsync();
+        Branch? branch = null;
+        var branchId = request.BranchId;
+
+        if (branchId.HasValue)
+        {
+            branch = await db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId.Value);
+            if (branch == null)
+            {
+                return BadRequest(new { message = "Branch does not exist." });
+            }
+        }
+
+        if (!scope.HasGlobalAccess)
+        {
+            if (branchId.HasValue)
+            {
+                if (!scope.AllowedBranchIds.Contains(branchId.Value))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not authorized to access the requested branch." });
+                }
+            }
+            else if (scope.AllowedBranchIds.Count == 1)
+            {
+                branchId = scope.AllowedBranchIds.Single();
+                branch = await db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId.Value);
+            }
+            else if (scope.AllowedBranchIds.Count == 0)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "You do not have an assigned branch for company creation." });
+            }
+            else
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "BranchId is required when multiple branch assignments exist." });
+            }
+        }
+
         var username = currentUserService.Username;
         var company = new Company
         {
+            BranchId = branchId,
+            Branch = branch,
             CompanyName = request.CompanyName!,
             GSTIN = request.GSTIN!,
             PAN = request.PAN!,
@@ -80,13 +133,49 @@ public class CompaniesController : ControllerBase
         int id,
         [FromBody] CompanyRequest request,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] CurrentUserService currentUserService,
         [FromServices] AuditService auditService)
     {
-        var company = await db.Companies.FindAsync(id);
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var company = await currentUserScopeService
+            .ApplyCompanyScope(db.Companies.Include(c => c.Branch), scope)
+            .FirstOrDefaultAsync(c => c.CompanyId == id);
+
         if (company == null) return NotFound();
 
         var oldValues = CreateSnapshot(company);
+        var requestedBranchId = request.BranchId ?? company.BranchId;
+        if (requestedBranchId != company.BranchId)
+        {
+            if (requestedBranchId.HasValue)
+            {
+                var branch = await db.Branches.FirstOrDefaultAsync(b => b.BranchId == requestedBranchId.Value);
+                if (branch == null)
+                {
+                    return BadRequest(new { message = "Branch does not exist." });
+                }
+
+                if (!scope.HasGlobalAccess && !scope.AllowedBranchIds.Contains(requestedBranchId.Value))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not authorized to assign the requested branch." });
+                }
+
+                company.BranchId = requestedBranchId;
+                company.Branch = branch;
+            }
+            else
+            {
+                if (!scope.HasGlobalAccess)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not authorized to remove the company branch assignment." });
+                }
+
+                company.BranchId = null;
+                company.Branch = null;
+            }
+        }
+
         company.CompanyName = request.CompanyName ?? company.CompanyName;
         company.GSTIN = request.GSTIN ?? company.GSTIN;
         company.PAN = request.PAN ?? company.PAN;
@@ -122,9 +211,14 @@ public class CompaniesController : ControllerBase
     public async Task<IActionResult> DeleteCompany(
         int id,
         [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserScopeService currentUserScopeService,
         [FromServices] AuditService auditService)
     {
-        var company = await db.Companies.FindAsync(id);
+        var scope = await currentUserScopeService.GetScopeAsync();
+        var company = await currentUserScopeService
+            .ApplyCompanyScope(db.Companies, scope)
+            .FirstOrDefaultAsync(c => c.CompanyId == id);
+
         if (company == null) return NotFound();
 
         var oldValues = CreateSnapshot(company);
@@ -142,6 +236,8 @@ public class CompaniesController : ControllerBase
     private static CompanyResponse ToResponse(Company company) => new()
     {
         CompanyId = company.CompanyId,
+        BranchId = company.BranchId,
+        BranchName = company.Branch?.Name,
         CompanyName = company.CompanyName,
         Address = company.Address,
         City = company.City,
@@ -167,6 +263,7 @@ public class CompaniesController : ControllerBase
     private static object CreateSnapshot(Company company) => new
     {
         company.CompanyId,
+        company.BranchId,
         company.CompanyName,
         company.Address,
         company.City,
