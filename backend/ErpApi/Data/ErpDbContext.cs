@@ -210,9 +210,13 @@ namespace ErpApi.Data
                 new Permission { PermissionId = 2, Name = "company.write", Description = "Create and update companies", CreatedDate = SeedTimestamp },
                 new Permission { PermissionId = 3, Name = "company.delete", Description = "Delete companies", CreatedDate = SeedTimestamp },
                 new Permission { PermissionId = 4, Name = "invoice.read", Description = "Read invoices", CreatedDate = SeedTimestamp },
-                new Permission { PermissionId = 5, Name = "invoice.write", Description = "Create and update invoices", CreatedDate = SeedTimestamp },
+                new Permission { PermissionId = 5, Name = "invoice.write", Description = "Create and update draft invoices", CreatedDate = SeedTimestamp },
                 new Permission { PermissionId = 6, Name = "invoice.delete", Description = "Delete invoices", CreatedDate = SeedTimestamp },
-                new Permission { PermissionId = 7, Name = "audit.read", Description = "Read audit logs", CreatedDate = SeedTimestamp });
+                new Permission { PermissionId = 7, Name = "audit.read", Description = "Read audit logs", CreatedDate = SeedTimestamp },
+                new Permission { PermissionId = 8, Name = "invoice.submit", Description = "Submit invoices for approval", CreatedDate = SeedTimestamp },
+                new Permission { PermissionId = 9, Name = "invoice.approve", Description = "Approve submitted invoices", CreatedDate = SeedTimestamp },
+                new Permission { PermissionId = 10, Name = "invoice.reject", Description = "Reject submitted invoices", CreatedDate = SeedTimestamp },
+                new Permission { PermissionId = 11, Name = "invoice.pay", Description = "Mark approved invoices as paid", CreatedDate = SeedTimestamp });
 
             modelBuilder.Entity<RolePermission>().HasData(
                 new RolePermission { RoleId = 1, PermissionId = 1, CreatedDate = SeedTimestamp },
@@ -221,7 +225,11 @@ namespace ErpApi.Data
                 new RolePermission { RoleId = 1, PermissionId = 4, CreatedDate = SeedTimestamp },
                 new RolePermission { RoleId = 1, PermissionId = 5, CreatedDate = SeedTimestamp },
                 new RolePermission { RoleId = 1, PermissionId = 6, CreatedDate = SeedTimestamp },
-                new RolePermission { RoleId = 1, PermissionId = 7, CreatedDate = SeedTimestamp });
+                new RolePermission { RoleId = 1, PermissionId = 7, CreatedDate = SeedTimestamp },
+                new RolePermission { RoleId = 1, PermissionId = 8, CreatedDate = SeedTimestamp },
+                new RolePermission { RoleId = 1, PermissionId = 9, CreatedDate = SeedTimestamp },
+                new RolePermission { RoleId = 1, PermissionId = 10, CreatedDate = SeedTimestamp },
+                new RolePermission { RoleId = 1, PermissionId = 11, CreatedDate = SeedTimestamp });
         }
     }
 }
