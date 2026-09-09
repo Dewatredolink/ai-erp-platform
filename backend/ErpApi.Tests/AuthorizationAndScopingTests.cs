@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using ErpApi.Authorization;
+using ErpApi.DTOs.Companies;
 using ErpApi.Tests.Infrastructure;
 using Xunit;
 
@@ -86,5 +87,37 @@ public class AuthorizationAndScopingTests : IClassFixture<TestWebApplicationFact
         var response = await client.PostAsJsonAsync("/api/invoices", request);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ScopedUser_CreateCompanyWithoutBranch_AssignsOnlyAllowedBranch()
+    {
+        using var client = _factory.CreateAuthenticatedClient(TestData.ScopedUserId, TestData.ScopedUsername, PermissionConstants.CompanyWrite);
+        var request = new
+        {
+            companyName = "Scoped Branch Company",
+            address = "Address",
+            city = "City",
+            state = "State",
+            pinCode = "123123",
+            email = "scoped-branch@example.com",
+            phoneNumber = "9999999999",
+            website = "https://scoped-branch.example.com",
+            gstin = "GSTINSCOPED",
+            pan = "PANSCOPED",
+            drugLicenceNumber = "DLSCOPED",
+            udogAadhaar = "UDSCOPED",
+            aadhaarNumber = "AADHAARSCOPED",
+            msmeNumber = "MSMESCOPED",
+            fssaiNumber = "FSSAISCOPED",
+            isActive = true,
+        };
+
+        var response = await client.PostAsJsonAsync("/api/companies", request);
+        var payload = await response.Content.ReadFromJsonAsync<CompanyResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(payload);
+        Assert.Equal(TestData.BranchAId, payload!.BranchId);
     }
 }

@@ -5,6 +5,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ErpApi.Services;
 
+public sealed class BranchAuthorizationResult
+{
+    public int? BranchId { get; init; }
+    public Branch? Branch { get; init; }
+    public int? StatusCode { get; init; }
+    public string? Message { get; init; }
+    public bool IsAuthorized => StatusCode is null;
+}
+
 public sealed class CurrentUserScope
 {
     public bool HasGlobalAccess { get; init; }
@@ -94,4 +103,190 @@ public class CurrentUserScopeService
             ? query.Where(_ => false)
             : query.Where(invoice => companyIds.Contains(invoice.CompanyId));
     }
+
+    public async Task<Company?> FindAccessibleCompanyAsync(
+        IQueryable<Company> query,
+        int companyId,
+        CurrentUserScope? scope = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveScope = scope ?? await GetScopeAsync(cancellationToken);
+        return await ApplyCompanyScope(query, effectiveScope)
+            .FirstOrDefaultAsync(company => company.CompanyId == companyId, cancellationToken);
+    }
+
+    public async Task<Invoice?> FindAccessibleInvoiceAsync(
+        IQueryable<Invoice> query,
+        Guid invoiceId,
+        CurrentUserScope? scope = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveScope = scope ?? await GetScopeAsync(cancellationToken);
+        return await ApplyInvoiceScope(query, effectiveScope)
+            .FirstOrDefaultAsync(invoice => invoice.InvoiceId == invoiceId, cancellationToken);
+    }
+
+    public async Task<(bool HasAccess, bool Exists)> CheckCompanyAccessAsync(
+        int companyId,
+        CurrentUserScope? scope = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveScope = scope ?? await GetScopeAsync(cancellationToken);
+        var hasAccess = await ApplyCompanyScope(_db.Companies.AsNoTracking(), effectiveScope)
+            .AnyAsync(company => company.CompanyId == companyId, cancellationToken);
+        if (hasAccess)
+        {
+            return (true, true);
+        }
+
+        var exists = await _db.Companies.AsNoTracking()
+            .AnyAsync(company => company.CompanyId == companyId, cancellationToken);
+        return (false, exists);
+    }
+
+    public async Task<BranchAuthorizationResult> ResolveBranchForCompanyCreateAsync(
+        int? branchId,
+        CurrentUserScope? scope = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveScope = scope ?? await GetScopeAsync(cancellationToken);
+        Branch? branch = null;
+        var resolvedBranchId = branchId;
+
+        if (resolvedBranchId.HasValue)
+        {
+            branch = await _db.Branches.FirstOrDefaultAsync(
+                candidate => candidate.BranchId == resolvedBranchId.Value,
+                cancellationToken);
+
+            if (branch == null)
+            {
+                return new BranchAuthorizationResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Message = "Branch does not exist.",
+                };
+            }
+        }
+
+        if (!effectiveScope.HasGlobalAccess)
+        {
+            if (resolvedBranchId.HasValue)
+            {
+                if (!effectiveScope.AllowedBranchIds.Contains(resolvedBranchId.Value))
+                {
+                    return new BranchAuthorizationResult
+                    {
+                        StatusCode = StatusCodes.Status403Forbidden,
+                        Message = "You are not authorized to access the requested branch.",
+                    };
+                }
+            }
+            else if (effectiveScope.AllowedBranchIds.Count == 1)
+            {
+                resolvedBranchId = effectiveScope.AllowedBranchIds.Single();
+                branch = await _db.Branches.FirstOrDefaultAsync(
+                    candidate => candidate.BranchId == resolvedBranchId.Value,
+                    cancellationToken);
+            }
+            else if (effectiveScope.AllowedBranchIds.Count == 0)
+            {
+                return new BranchAuthorizationResult
+                {
+                    StatusCode = StatusCodes.Status403Forbidden,
+                    Message = "You do not have an assigned branch for company creation.",
+                };
+            }
+            else
+            {
+                return new BranchAuthorizationResult
+                {
+                    StatusCode = StatusCodes.Status403Forbidden,
+                    Message = "BranchId is required when multiple branch assignments exist.",
+                };
+            }
+        }
+
+        return new BranchAuthorizationResult
+        {
+            BranchId = resolvedBranchId,
+            Branch = branch,
+        };
+    }
+
+    public async Task<BranchAuthorizationResult> ResolveBranchForCompanyUpdateAsync(
+        int? requestedBranchId,
+        int? currentBranchId,
+        CurrentUserScope? scope = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveScope = scope ?? await GetScopeAsync(cancellationToken);
+        if (requestedBranchId == currentBranchId)
+        {
+            return new BranchAuthorizationResult
+            {
+                BranchId = currentBranchId,
+            };
+        }
+
+        if (requestedBranchId.HasValue)
+        {
+            var branch = await _db.Branches.FirstOrDefaultAsync(
+                candidate => candidate.BranchId == requestedBranchId.Value,
+                cancellationToken);
+            if (branch == null)
+            {
+                return new BranchAuthorizationResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Message = "Branch does not exist.",
+                };
+            }
+
+            if (!effectiveScope.HasGlobalAccess && !effectiveScope.AllowedBranchIds.Contains(requestedBranchId.Value))
+            {
+                return new BranchAuthorizationResult
+                {
+                    StatusCode = StatusCodes.Status403Forbidden,
+                    Message = "You are not authorized to assign the requested branch.",
+                };
+            }
+
+            return new BranchAuthorizationResult
+            {
+                BranchId = requestedBranchId,
+                Branch = branch,
+            };
+        }
+
+        if (!effectiveScope.HasGlobalAccess)
+        {
+            return new BranchAuthorizationResult
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+                Message = "You are not authorized to remove the company branch assignment.",
+            };
+        }
+
+        return new BranchAuthorizationResult();
+    }
+
+    public static bool CanEditInvoice(Invoice invoice) =>
+        invoice.ApprovalStatus == InvoiceApprovalStatus.Draft
+        || invoice.ApprovalStatus == InvoiceApprovalStatus.Rejected;
+
+    public static bool CanDeleteInvoice(Invoice invoice) => CanEditInvoice(invoice);
+
+    public static bool CanSubmitInvoice(Invoice invoice) =>
+        invoice.ApprovalStatus == InvoiceApprovalStatus.Draft
+        || invoice.ApprovalStatus == InvoiceApprovalStatus.Rejected;
+
+    public static bool CanApproveInvoice(Invoice invoice) =>
+        invoice.ApprovalStatus == InvoiceApprovalStatus.Submitted;
+
+    public static bool CanRejectInvoice(Invoice invoice) =>
+        invoice.ApprovalStatus == InvoiceApprovalStatus.Submitted;
+
+    public static bool CanMarkInvoicePaid(Invoice invoice) =>
+        invoice.ApprovalStatus == InvoiceApprovalStatus.Approved;
 }
