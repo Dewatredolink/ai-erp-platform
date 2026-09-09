@@ -64,7 +64,12 @@ public class AuthController : ControllerBase
             userId: user.UserId,
             username: user.Username);
 
-        return Created("/api/auth/me", new { user.UserId, user.Username, user.Email });
+        return Created("/api/auth/me", new UserSummaryResponse
+        {
+            UserId = user.UserId,
+            Username = user.Username,
+            Email = user.Email,
+        });
     }
 
     [HttpPost("login")]
@@ -149,7 +154,14 @@ public class AuthController : ControllerBase
         await EnsureDefaultRoleAssignmentAsync(db, user);
         var (roles, permissions) = await GetUserAccessAsync(db, user.UserId);
 
-        return Ok(new { user.UserId, user.Username, user.Email, roles, permissions });
+        return Ok(new CurrentUserResponse
+        {
+            UserId = user.UserId,
+            Username = user.Username,
+            Email = user.Email,
+            Roles = roles,
+            Permissions = permissions,
+        });
     }
 
     private static async Task EnsureDefaultRoleAssignmentAsync(ErpDbContext db, User user)
