@@ -48,6 +48,45 @@ export function isAuthenticated() {
   return Boolean(getToken());
 }
 
+function parseJwtPayload(token) {
+  if (!token) return null;
+  const [, payload] = token.split('.');
+  if (!payload) return null;
+  try {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(window.atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+export function getPermissions() {
+  const user = getUser();
+  if (Array.isArray(user?.permissions)) {
+    return user.permissions;
+  }
+
+  const payload = parseJwtPayload(getToken());
+  if (!payload) return [];
+
+  const rawPermissions = payload.permission;
+  if (Array.isArray(rawPermissions)) {
+    return rawPermissions;
+  }
+
+  if (typeof rawPermissions === 'string' && rawPermissions.trim()) {
+    return [rawPermissions];
+  }
+
+  return [];
+}
+
+export function hasPermission(permission) {
+  if (!permission) return true;
+  return getPermissions().some((candidate) => candidate === permission);
+}
+
 /**
  * Log in with a username/email and password. On success, stores the JWT
  * token and user profile in localStorage.
@@ -61,9 +100,9 @@ export async function login(username, password) {
     password,
   });
 
-  const { token, userId, email, username: returnedUsername } = response.data;
+  const { token, userId, email, username: returnedUsername, roles, permissions } = response.data;
   setToken(token);
-  setUser({ userId, username: returnedUsername, email });
+  setUser({ userId, username: returnedUsername, email, roles, permissions });
   return response.data;
 }
 
@@ -113,6 +152,8 @@ export default {
   getToken,
   setToken,
   isAuthenticated,
+  hasPermission,
+  getPermissions,
   getUser,
   setUser,
 };

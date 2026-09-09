@@ -5,6 +5,8 @@ import CompaniesPage from './pages/CompaniesPage';
 import InvoiceListPage from './pages/InvoiceListPage';
 import InvoiceFormPage from './pages/InvoiceFormPage';
 import InvoiceDetailsPage from './pages/InvoiceDetailsPage';
+import AuditLogListPage from './pages/AuditLogListPage';
+import AuditLogDetailsPage from './pages/AuditLogDetailsPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import './App.css';
@@ -54,6 +56,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <InvoiceFormPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/audit-logs"
+            element={
+              <ProtectedRoute requiredPermission="audit.read">
+                <AuditLogListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/audit-logs/:id"
+            element={
+              <ProtectedRoute requiredPermission="audit.read">
+                <AuditLogDetailsPage />
               </ProtectedRoute>
             }
           />
