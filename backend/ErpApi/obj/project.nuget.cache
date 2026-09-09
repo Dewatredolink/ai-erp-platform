@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "VEFY8S/bLcs=",
+  "dgSpecHash": "/rUH+rH1rYo=",
   "success": true,
   "projectFilePath": "/home/runner/work/ai-erp-platform/ai-erp-platform/backend/ErpApi/ErpApi.csproj",
   "expectedPackageFiles": [
@@ -21,6 +21,7 @@
     "/tmp/codeql-scratch-7b17f3f75b24b004/dbs/csharp/working/packages/microsoft.entityframeworkcore.abstractions/9.0.0/microsoft.entityframeworkcore.abstractions.9.0.0.nupkg.sha512",
     "/tmp/codeql-scratch-7b17f3f75b24b004/dbs/csharp/working/packages/microsoft.entityframeworkcore.analyzers/9.0.0/microsoft.entityframeworkcore.analyzers.9.0.0.nupkg.sha512",
     "/tmp/codeql-scratch-7b17f3f75b24b004/dbs/csharp/working/packages/microsoft.entityframeworkcore.design/9.0.0/microsoft.entityframeworkcore.design.9.0.0.nupkg.sha512",
+    "/tmp/codeql-scratch-7b17f3f75b24b004/dbs/csharp/working/packages/microsoft.entityframeworkcore.inmemory/9.0.0/microsoft.entityframeworkcore.inmemory.9.0.0.nupkg.sha512",
     "/tmp/codeql-scratch-7b17f3f75b24b004/dbs/csharp/working/packages/microsoft.entityframeworkcore.relational/9.0.0/microsoft.entityframeworkcore.relational.9.0.0.nupkg.sha512",
     "/tmp/codeql-scratch-7b17f3f75b24b004/dbs/csharp/working/packages/microsoft.extensions.apidescription.server/10.0.0/microsoft.extensions.apidescription.server.10.0.0.nupkg.sha512",
     "/tmp/codeql-scratch-7b17f3f75b24b004/dbs/csharp/working/packages/microsoft.extensions.caching.abstractions/9.0.0/microsoft.extensions.caching.abstractions.9.0.0.nupkg.sha512",
