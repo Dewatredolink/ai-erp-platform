@@ -54,8 +54,9 @@ public class CurrentUserScopeService
 
         if (branchIds.Length > 0)
         {
+            var assignedBranchIds = branchIds.ToList();
             companyIds.AddRange(await _db.Companies
-                .Where(company => company.BranchId.HasValue && branchIds.Contains(company.BranchId.Value))
+                .Where(company => company.BranchId.HasValue && assignedBranchIds.Contains(company.BranchId.Value))
                 .Select(company => company.CompanyId)
                 .Distinct()
                 .ToListAsync(cancellationToken));
@@ -75,8 +76,8 @@ public class CurrentUserScopeService
             return query;
         }
 
-        var companyIds = scope.AllowedCompanyIds.ToArray();
-        return companyIds.Length == 0
+        var companyIds = scope.AllowedCompanyIds.ToList();
+        return companyIds.Count == 0
             ? query.Where(_ => false)
             : query.Where(company => companyIds.Contains(company.CompanyId));
     }
@@ -88,8 +89,8 @@ public class CurrentUserScopeService
             return query;
         }
 
-        var companyIds = scope.AllowedCompanyIds.ToArray();
-        return companyIds.Length == 0
+        var companyIds = scope.AllowedCompanyIds.ToList();
+        return companyIds.Count == 0
             ? query.Where(_ => false)
             : query.Where(invoice => companyIds.Contains(invoice.CompanyId));
     }
