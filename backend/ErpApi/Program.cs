@@ -58,9 +58,18 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Host=localhost;Port=5432;Database=erp_db;Username=postgres;******;Timezone=UTC;";
-builder.Services.AddDbContext<ErpDbContext>(options => options.UseNpgsql(connectionString));
+var useInMemoryDatabase = builder.Configuration.GetValue<bool>("UseInMemoryDatabase");
+if (useInMemoryDatabase)
+{
+    var inMemoryDatabaseName = builder.Configuration.GetValue<string>("InMemoryDatabaseName") ?? "ErpApiTestDb";
+    builder.Services.AddDbContext<ErpDbContext>(options => options.UseInMemoryDatabase(inMemoryDatabaseName));
+}
+else
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? "Host=localhost;Port=5432;Database=erp_db;Username=postgres;******;Timezone=UTC;";
+    builder.Services.AddDbContext<ErpDbContext>(options => options.UseNpgsql(connectionString));
+}
 
 builder.Services.AddCors(options =>
 {
