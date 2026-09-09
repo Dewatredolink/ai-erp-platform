@@ -3,6 +3,8 @@ namespace ErpApi.Models
     public class Company
     {
         public int CompanyId { get; set; }
+        public int? BranchId { get; set; }
+        public Branch? Branch { get; set; }
         public string CompanyName { get; set; }
         public string Address { get; set; }
         public string City { get; set; }

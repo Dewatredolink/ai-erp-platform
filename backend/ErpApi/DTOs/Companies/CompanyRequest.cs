@@ -2,6 +2,7 @@ namespace ErpApi.DTOs.Companies;
 
 public class CompanyRequest
 {
+    public int? BranchId { get; set; }
     public string? CompanyName { get; set; }
     public string? Address { get; set; }
     public string? City { get; set; }

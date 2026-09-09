@@ -12,12 +12,15 @@ namespace ErpApi.Data
         }
 
         public DbSet<Company> Companies { get; set; }
+        public DbSet<Branch> Branches { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<Invoice> Invoices { get; set; }
         public DbSet<InvoiceItem> InvoiceItems { get; set; }
         public DbSet<Role> Roles { get; set; }
         public DbSet<Permission> Permissions { get; set; }
         public DbSet<UserRole> UserRoles { get; set; }
+        public DbSet<UserBranch> UserBranches { get; set; }
+        public DbSet<UserCompany> UserCompanies { get; set; }
         public DbSet<RolePermission> RolePermissions { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
 
@@ -25,12 +28,25 @@ namespace ErpApi.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            modelBuilder.Entity<Branch>()
+                .HasKey(b => b.BranchId);
+
+            modelBuilder.Entity<Branch>()
+                .Property(b => b.Name)
+                .IsRequired();
+
             modelBuilder.Entity<Company>()
                 .HasKey(c => c.CompanyId);
 
             modelBuilder.Entity<Company>()
                 .Property(c => c.CompanyName)
                 .IsRequired();
+
+            modelBuilder.Entity<Company>()
+                .HasOne(c => c.Branch)
+                .WithMany()
+                .HasForeignKey(c => c.BranchId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<User>()
                 .HasKey(u => u.UserId);
@@ -59,6 +75,18 @@ namespace ErpApi.Data
                 .HasMany(u => u.UserRoles)
                 .WithOne(ur => ur.User)
                 .HasForeignKey(ur => ur.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<User>()
+                .HasMany(u => u.UserBranches)
+                .WithOne(ub => ub.User)
+                .HasForeignKey(ub => ub.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<User>()
+                .HasMany(u => u.UserCompanies)
+                .WithOne(uc => uc.User)
+                .HasForeignKey(uc => uc.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<Invoice>()
@@ -152,6 +180,24 @@ namespace ErpApi.Data
                 .HasOne(ur => ur.Role)
                 .WithMany(r => r.UserRoles)
                 .HasForeignKey(ur => ur.RoleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<UserBranch>()
+                .HasKey(ub => new { ub.UserId, ub.BranchId });
+
+            modelBuilder.Entity<UserBranch>()
+                .HasOne(ub => ub.Branch)
+                .WithMany()
+                .HasForeignKey(ub => ub.BranchId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<UserCompany>()
+                .HasKey(uc => new { uc.UserId, uc.CompanyId });
+
+            modelBuilder.Entity<UserCompany>()
+                .HasOne(uc => uc.Company)
+                .WithMany()
+                .HasForeignKey(uc => uc.CompanyId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<RolePermission>()
