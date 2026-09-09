@@ -1,10 +1,11 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { isAuthenticated, logout } from '../services/authService';
+import { hasPermission, isAuthenticated, logout } from '../services/authService';
 import './Navigation.css';
 
 function Navigation() {
   const navigate = useNavigate();
   const authenticated = isAuthenticated();
+  const canReadAuditLogs = hasPermission('audit.read');
 
   async function handleLogout() {
     await logout();
@@ -28,6 +29,14 @@ function Navigation() {
         >
           Invoices
         </NavLink>
+        {authenticated && canReadAuditLogs && (
+          <NavLink
+            to="/audit-logs"
+            className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+          >
+            Audit Logs
+          </NavLink>
+        )}
         {authenticated && (
           <button type="button" className="nav-link nav-link--button" onClick={handleLogout}>
             Logout
