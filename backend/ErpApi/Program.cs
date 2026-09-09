@@ -1,8 +1,11 @@
 using System.Text;
+using ErpApi.Authorization;
 using ErpApi.Data;
+using ErpApi.Middleware;
 using ErpApi.Services;
 using ErpApi.Utilities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text.Json.Serialization;
@@ -13,6 +16,10 @@ var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? 
 builder.Services.AddSingleton(jwtSettings);
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddSingleton<InvoicePdfService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<CurrentUserService>();
+builder.Services.AddScoped<AuditService>();
+builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -27,10 +34,20 @@ builder.Services
             ValidIssuer = jwtSettings.Issuer,
             ValidAudience = jwtSettings.Audience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret)),
+            NameClaimType = System.Security.Claims.ClaimTypes.Name,
+            RoleClaimType = System.Security.Claims.ClaimTypes.Role,
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    foreach (var permission in PermissionConstants.All)
+    {
+        options.AddPolicy(permission, policy =>
+            policy.RequireAuthenticatedUser()
+                .AddRequirements(new PermissionRequirement(permission)));
+    }
+});
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.Converters.Add(new UtcDateTimeConverter());
@@ -61,6 +78,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowAll");
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

@@ -1,8 +1,10 @@
 using ErpApi.Data;
+using ErpApi.Authorization;
 using ErpApi.DTOs.Companies;
 using ErpApi.DTOs.Invoices;
 using ErpApi.Models;
 using ErpApi.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,8 +12,10 @@ namespace ErpApi.Controllers;
 
 [ApiController]
 [Route("api/invoices")]
+[Authorize]
 public class InvoicesController : ControllerBase
 {
+    [Authorize(Policy = PermissionConstants.InvoiceRead)]
     [HttpGet("stats")]
     public async Task<IActionResult> GetInvoiceStats([FromServices] ErpDbContext db)
     {
@@ -32,6 +36,7 @@ public class InvoicesController : ControllerBase
         });
     }
 
+    [Authorize(Policy = PermissionConstants.InvoiceRead)]
     [HttpGet]
     public async Task<IActionResult> GetAllInvoices(
         [FromServices] ErpDbContext db,
@@ -85,6 +90,7 @@ public class InvoicesController : ControllerBase
         });
     }
 
+    [Authorize(Policy = PermissionConstants.InvoiceRead)]
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetInvoiceById(Guid id, [FromServices] ErpDbContext db)
     {
@@ -96,8 +102,13 @@ public class InvoicesController : ControllerBase
         return invoice == null ? NotFound() : Ok(ToResponse(invoice, includeItems: true));
     }
 
+    [Authorize(Policy = PermissionConstants.InvoiceWrite)]
     [HttpPost]
-    public async Task<IActionResult> CreateInvoice([FromBody] InvoiceRequest request, [FromServices] ErpDbContext db)
+    public async Task<IActionResult> CreateInvoice(
+        [FromBody] InvoiceRequest request,
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserService currentUserService,
+        [FromServices] AuditService auditService)
     {
         var validationError = await ValidateInvoiceRequest(request, db, null);
         if (validationError != null)
@@ -119,8 +130,8 @@ public class InvoicesController : ControllerBase
             DueDate = dueDate,
             Notes = request.Notes,
             Status = request.Status,
-            CreatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? "Admin" : request.CreatedBy,
-            UpdatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? "Admin" : request.CreatedBy,
+            CreatedBy = currentUserService.Username,
+            UpdatedBy = currentUserService.Username,
             CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
             UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
             Items = items,
@@ -131,12 +142,23 @@ public class InvoicesController : ControllerBase
 
         db.Invoices.Add(invoice);
         await db.SaveChangesAsync();
+        await auditService.WriteAsync(
+            actionType: "invoice.create",
+            entityName: nameof(Invoice),
+            entityId: invoice.InvoiceId.ToString(),
+            newValues: CreateSnapshot(invoice));
 
         return Created($"/api/invoices/{invoice.InvoiceId}", ToResponse(invoice, includeItems: true));
     }
 
+    [Authorize(Policy = PermissionConstants.InvoiceWrite)]
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> UpdateInvoice(Guid id, [FromBody] InvoiceRequest request, [FromServices] ErpDbContext db)
+    public async Task<IActionResult> UpdateInvoice(
+        Guid id,
+        [FromBody] InvoiceRequest request,
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserService currentUserService,
+        [FromServices] AuditService auditService)
     {
         var invoice = await db.Invoices
             .Include(i => i.Items)
@@ -150,6 +172,7 @@ public class InvoicesController : ControllerBase
             return BadRequest(new { message = validationError });
         }
 
+        var oldValues = CreateSnapshot(invoice);
         var items = BuildInvoiceItems(request.Items);
         foreach (var item in items)
         {
@@ -165,7 +188,7 @@ public class InvoicesController : ControllerBase
         invoice.DueDate = dueDate;
         invoice.Notes = request.Notes;
         invoice.Status = request.Status;
-        invoice.UpdatedBy = string.IsNullOrWhiteSpace(request.CreatedBy) ? invoice.UpdatedBy : request.CreatedBy;
+        invoice.UpdatedBy = currentUserService.Username;
         invoice.UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
 
         var existingItems = await db.InvoiceItems.Where(ii => ii.InvoiceId == invoice.InvoiceId).ToListAsync();
@@ -178,23 +201,48 @@ public class InvoicesController : ControllerBase
         invoice.GrandTotal = invoice.TotalAmount + invoice.TaxAmount;
 
         await db.SaveChangesAsync();
+        await auditService.WriteAsync(
+            actionType: "invoice.update",
+            entityName: nameof(Invoice),
+            entityId: invoice.InvoiceId.ToString(),
+            oldValues: oldValues,
+            newValues: CreateSnapshot(invoice));
 
         return Ok(ToResponse(invoice, includeItems: true));
     }
 
+    [Authorize(Policy = PermissionConstants.InvoiceDelete)]
     [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> DeleteInvoice(Guid id, [FromServices] ErpDbContext db)
+    public async Task<IActionResult> DeleteInvoice(
+        Guid id,
+        [FromServices] ErpDbContext db,
+        [FromServices] AuditService auditService)
     {
-        var invoice = await db.Invoices.FindAsync(id);
+        var invoice = await db.Invoices
+            .Include(i => i.Items)
+            .FirstOrDefaultAsync(i => i.InvoiceId == id);
+
         if (invoice == null) return NotFound();
 
+        var oldValues = CreateSnapshot(invoice);
         db.Invoices.Remove(invoice);
         await db.SaveChangesAsync();
+        await auditService.WriteAsync(
+            actionType: "invoice.delete",
+            entityName: nameof(Invoice),
+            entityId: id.ToString(),
+            oldValues: oldValues);
+
         return Ok(new { message = "Deleted" });
     }
 
+    [Authorize(Policy = PermissionConstants.InvoiceWrite)]
     [HttpPost("{id:guid}/pdf")]
-    public async Task<IActionResult> GenerateInvoicePdf(Guid id, [FromServices] ErpDbContext db, [FromServices] InvoicePdfService pdfService)
+    public async Task<IActionResult> GenerateInvoicePdf(
+        Guid id,
+        [FromServices] ErpDbContext db,
+        [FromServices] InvoicePdfService pdfService,
+        [FromServices] AuditService auditService)
     {
         var invoice = await db.Invoices
             .Include(i => i.Company)
@@ -204,6 +252,12 @@ public class InvoicesController : ControllerBase
         if (invoice == null) return NotFound();
 
         var pdfBytes = pdfService.GenerateInvoicePdf(invoice, invoice.Company);
+        await auditService.WriteAsync(
+            actionType: "invoice.pdf.generate",
+            entityName: nameof(Invoice),
+            entityId: invoice.InvoiceId.ToString(),
+            metadata: new { invoice.InvoiceNumber, invoice.CompanyId });
+
         return File(pdfBytes, "application/pdf", $"invoice-{invoice.InvoiceNumber}.pdf");
     }
 
@@ -341,4 +395,34 @@ public class InvoicesController : ControllerBase
                 : new List<InvoiceItemResponse>(),
         };
     }
+
+    private static object CreateSnapshot(Invoice invoice) => new
+    {
+        invoice.InvoiceId,
+        invoice.InvoiceNumber,
+        invoice.CompanyId,
+        invoice.InvoiceDate,
+        invoice.DueDate,
+        invoice.TotalAmount,
+        invoice.TaxAmount,
+        invoice.GrandTotal,
+        invoice.Status,
+        invoice.Notes,
+        invoice.CreatedBy,
+        invoice.CreatedDate,
+        invoice.UpdatedBy,
+        invoice.UpdatedDate,
+        Items = invoice.Items.Select(item => new
+        {
+            item.InvoiceItemId,
+            item.InvoiceId,
+            item.Description,
+            item.Quantity,
+            item.UnitPrice,
+            item.Amount,
+            item.TaxRate,
+            item.TaxAmount,
+            item.CreatedDate,
+        }).ToList(),
+    };
 }

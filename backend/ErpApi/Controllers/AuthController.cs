@@ -1,10 +1,12 @@
 using ErpApi.Data;
 using ErpApi.DTOs.Auth;
+using ErpApi.Authorization;
 using ErpApi.Models;
 using ErpApi.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace ErpApi.Controllers;
 
@@ -13,7 +15,10 @@ namespace ErpApi.Controllers;
 public class AuthController : ControllerBase
 {
     [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest request, [FromServices] ErpDbContext db)
+    public async Task<IActionResult> Register(
+        [FromBody] RegisterRequest request,
+        [FromServices] ErpDbContext db,
+        [FromServices] AuditService auditService)
     {
         if (string.IsNullOrWhiteSpace(request.Username) ||
             string.IsNullOrWhiteSpace(request.Email) ||
@@ -50,12 +55,24 @@ public class AuthController : ControllerBase
 
         db.Users.Add(user);
         await db.SaveChangesAsync();
+        await EnsureDefaultRoleAssignmentAsync(db, user);
+        await auditService.WriteAsync(
+            actionType: "auth.register",
+            entityName: nameof(User),
+            entityId: user.UserId.ToString(),
+            newValues: new { user.UserId, user.Username, user.Email, user.IsActive },
+            userId: user.UserId,
+            username: user.Username);
 
         return Created("/api/auth/me", new { user.UserId, user.Username, user.Email });
     }
 
     [HttpPost("login")]
-    public async Task<IActionResult> Login([FromBody] LoginRequest request, [FromServices] ErpDbContext db, [FromServices] JwtTokenService tokenService)
+    public async Task<IActionResult> Login(
+        [FromBody] LoginRequest request,
+        [FromServices] ErpDbContext db,
+        [FromServices] JwtTokenService tokenService,
+        [FromServices] AuditService auditService)
     {
         if (string.IsNullOrWhiteSpace(request.UsernameOrEmail) || string.IsNullOrWhiteSpace(request.Password))
         {
@@ -73,7 +90,16 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Invalid username/email or password." });
         }
 
-        var (token, expiresAt) = tokenService.GenerateToken(user);
+        await EnsureDefaultRoleAssignmentAsync(db, user);
+        var (roles, permissions) = await GetUserAccessAsync(db, user.UserId);
+        var (token, expiresAt) = tokenService.GenerateToken(user, roles, permissions);
+        await auditService.WriteAsync(
+            actionType: "auth.login",
+            entityName: nameof(User),
+            entityId: user.UserId.ToString(),
+            metadata: new { roles, permissions },
+            userId: user.UserId,
+            username: user.Username);
 
         return Ok(new AuthResponse
         {
@@ -82,12 +108,22 @@ public class AuthController : ControllerBase
             Email = user.Email,
             Token = token,
             ExpiresAt = expiresAt,
+            Roles = roles,
+            Permissions = permissions,
         });
     }
 
+    [Authorize]
     [HttpPost("logout")]
-    public IActionResult Logout()
+    public async Task<IActionResult> Logout([FromServices] AuditService auditService, [FromServices] CurrentUserService currentUserService)
     {
+        await auditService.WriteAsync(
+            actionType: "auth.logout",
+            entityName: nameof(User),
+            entityId: currentUserService.UserId?.ToString(),
+            userId: currentUserService.UserId,
+            username: currentUserService.Username);
+
         return Ok(new { message = "Logged out successfully." });
     }
 
@@ -95,7 +131,10 @@ public class AuthController : ControllerBase
     [HttpGet("me")]
     public async Task<IActionResult> GetCurrentUser([FromServices] ErpDbContext db)
     {
-        var userIdClaim = User.FindFirst("userId")?.Value;
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("userId")
+            ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
+
         if (userIdClaim == null || !int.TryParse(userIdClaim, out var userId))
         {
             return Unauthorized();
@@ -107,6 +146,51 @@ public class AuthController : ControllerBase
             return Unauthorized();
         }
 
-        return Ok(new { user.UserId, user.Username, user.Email });
+        await EnsureDefaultRoleAssignmentAsync(db, user);
+        var (roles, permissions) = await GetUserAccessAsync(db, user.UserId);
+
+        return Ok(new { user.UserId, user.Username, user.Email, roles, permissions });
+    }
+
+    private static async Task EnsureDefaultRoleAssignmentAsync(ErpDbContext db, User user)
+    {
+        var hasRole = await db.UserRoles.AnyAsync(ur => ur.UserId == user.UserId);
+        if (hasRole)
+        {
+            return;
+        }
+
+        var administratorRoleId = await db.Roles
+            .Where(role => role.Name == RoleConstants.Administrator)
+            .Select(role => role.RoleId)
+            .SingleAsync();
+
+        db.UserRoles.Add(new UserRole
+        {
+            UserId = user.UserId,
+            RoleId = administratorRoleId,
+            CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
+        });
+
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<(List<string> Roles, List<string> Permissions)> GetUserAccessAsync(ErpDbContext db, int userId)
+    {
+        var roles = await db.UserRoles
+            .Where(ur => ur.UserId == userId)
+            .Select(ur => ur.Role!.Name)
+            .Distinct()
+            .OrderBy(name => name)
+            .ToListAsync();
+
+        var permissions = await db.UserRoles
+            .Where(ur => ur.UserId == userId)
+            .SelectMany(ur => ur.Role!.RolePermissions.Select(rp => rp.Permission!.Name))
+            .Distinct()
+            .OrderBy(name => name)
+            .ToListAsync();
+
+        return (roles, permissions);
     }
 }
