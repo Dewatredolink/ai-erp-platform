@@ -10,6 +10,16 @@ namespace ErpApi.Models
         Overdue
     }
 
+    public enum InvoiceApprovalStatus
+    {
+        Draft,
+        Submitted,
+        Approved,
+        Rejected,
+        Paid,
+        Void
+    }
+
     public class Invoice
     {
         public Guid InvoiceId { get; set; }
@@ -22,6 +32,20 @@ namespace ErpApi.Models
         public decimal TaxAmount { get; set; }
         public decimal GrandTotal { get; set; }
         public InvoiceStatus Status { get; set; } = InvoiceStatus.Draft;
+        public InvoiceApprovalStatus ApprovalStatus { get; set; } = InvoiceApprovalStatus.Draft;
+        public int? SubmittedByUserId { get; set; }
+        public string? SubmittedBy { get; set; }
+        public DateTime? SubmittedAt { get; set; }
+        public int? ApprovedByUserId { get; set; }
+        public string? ApprovedBy { get; set; }
+        public DateTime? ApprovedAt { get; set; }
+        public int? RejectedByUserId { get; set; }
+        public string? RejectedBy { get; set; }
+        public DateTime? RejectedAt { get; set; }
+        public int? PaidByUserId { get; set; }
+        public string? PaidBy { get; set; }
+        public DateTime? PaidAt { get; set; }
+        public string? ApprovalRemarks { get; set; }
         public string? Notes { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
         public DateTime CreatedDate { get; set; }

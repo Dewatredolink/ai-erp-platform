@@ -21,8 +21,11 @@ public class InvoicesController : ControllerBase
     {
         var invoices = await db.Invoices.ToListAsync();
 
-        var totalRevenue = invoices.Where(i => i.Status == InvoiceStatus.Paid).Sum(i => i.GrandTotal);
-        var pendingCount = invoices.Count(i => i.Status == InvoiceStatus.Sent || i.Status == InvoiceStatus.Draft);
+        var totalRevenue = invoices.Where(i => i.ApprovalStatus == InvoiceApprovalStatus.Paid || i.Status == InvoiceStatus.Paid).Sum(i => i.GrandTotal);
+        var pendingCount = invoices.Count(i =>
+            i.ApprovalStatus == InvoiceApprovalStatus.Draft
+            || i.ApprovalStatus == InvoiceApprovalStatus.Submitted
+            || i.ApprovalStatus == InvoiceApprovalStatus.Approved);
         var overdueCount = invoices.Count(i => i.Status == InvoiceStatus.Overdue);
         var averageInvoiceValue = invoices.Count > 0 ? invoices.Average(i => i.GrandTotal) : 0;
 
@@ -130,6 +133,7 @@ public class InvoicesController : ControllerBase
             DueDate = dueDate,
             Notes = request.Notes,
             Status = request.Status,
+            ApprovalStatus = InvoiceApprovalStatus.Draft,
             CreatedBy = currentUserService.Username,
             UpdatedBy = currentUserService.Username,
             CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
@@ -165,6 +169,11 @@ public class InvoicesController : ControllerBase
             .FirstOrDefaultAsync(i => i.InvoiceId == id);
 
         if (invoice == null) return NotFound();
+
+        if (!CanEditInvoice(invoice))
+        {
+            return Conflict(new { message = $"Invoice cannot be edited while in '{invoice.ApprovalStatus}' state." });
+        }
 
         var validationError = await ValidateInvoiceRequest(request, db, id);
         if (validationError != null)
@@ -224,6 +233,11 @@ public class InvoicesController : ControllerBase
 
         if (invoice == null) return NotFound();
 
+        if (!CanDeleteInvoice(invoice))
+        {
+            return Conflict(new { message = $"Invoice cannot be deleted while in '{invoice.ApprovalStatus}' state." });
+        }
+
         var oldValues = CreateSnapshot(invoice);
         db.Invoices.Remove(invoice);
         await db.SaveChangesAsync();
@@ -259,6 +273,190 @@ public class InvoicesController : ControllerBase
             metadata: new { invoice.InvoiceNumber, invoice.CompanyId });
 
         return File(pdfBytes, "application/pdf", $"invoice-{invoice.InvoiceNumber}.pdf");
+    }
+
+    [Authorize(Policy = PermissionConstants.InvoiceSubmit)]
+    [HttpPost("{id:guid}/submit")]
+    public async Task<IActionResult> SubmitInvoice(
+        Guid id,
+        [FromBody] InvoiceApprovalActionRequest? request,
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserService currentUserService,
+        [FromServices] AuditService auditService)
+    {
+        var invoice = await db.Invoices.Include(i => i.Items).FirstOrDefaultAsync(i => i.InvoiceId == id);
+        if (invoice == null) return NotFound();
+
+        if (invoice.ApprovalStatus != InvoiceApprovalStatus.Draft && invoice.ApprovalStatus != InvoiceApprovalStatus.Rejected)
+        {
+            return BadRequest(new { message = $"Invoice in '{invoice.ApprovalStatus}' state cannot be submitted." });
+        }
+
+        var fromStatus = invoice.ApprovalStatus;
+        var oldValues = CreateSnapshot(invoice);
+        var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+        invoice.ApprovalStatus = InvoiceApprovalStatus.Submitted;
+        invoice.Status = InvoiceStatus.Sent;
+        invoice.SubmittedByUserId = currentUserService.UserId;
+        invoice.SubmittedBy = currentUserService.Username;
+        invoice.SubmittedAt = now;
+        invoice.ApprovalRemarks = request?.Remarks?.Trim();
+        invoice.UpdatedBy = currentUserService.Username;
+        invoice.UpdatedDate = now;
+
+        await db.SaveChangesAsync();
+        await auditService.WriteAsync(
+            actionType: "invoice.submit",
+            entityName: nameof(Invoice),
+            entityId: invoice.InvoiceId.ToString(),
+            oldValues: oldValues,
+            newValues: CreateSnapshot(invoice),
+            metadata: new
+            {
+                from = fromStatus.ToString(),
+                to = invoice.ApprovalStatus.ToString(),
+                remarks = invoice.ApprovalRemarks,
+            });
+
+        return Ok(ToResponse(invoice, includeItems: true));
+    }
+
+    [Authorize(Policy = PermissionConstants.InvoiceApprove)]
+    [HttpPost("{id:guid}/approve")]
+    public async Task<IActionResult> ApproveInvoice(
+        Guid id,
+        [FromBody] InvoiceApprovalActionRequest? request,
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserService currentUserService,
+        [FromServices] AuditService auditService)
+    {
+        var invoice = await db.Invoices.Include(i => i.Items).FirstOrDefaultAsync(i => i.InvoiceId == id);
+        if (invoice == null) return NotFound();
+
+        if (invoice.ApprovalStatus != InvoiceApprovalStatus.Submitted)
+        {
+            return BadRequest(new { message = $"Invoice in '{invoice.ApprovalStatus}' state cannot be approved." });
+        }
+
+        var fromStatus = invoice.ApprovalStatus;
+        var oldValues = CreateSnapshot(invoice);
+        var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+        invoice.ApprovalStatus = InvoiceApprovalStatus.Approved;
+        invoice.Status = InvoiceStatus.Sent;
+        invoice.ApprovedByUserId = currentUserService.UserId;
+        invoice.ApprovedBy = currentUserService.Username;
+        invoice.ApprovedAt = now;
+        invoice.ApprovalRemarks = request?.Remarks?.Trim();
+        invoice.UpdatedBy = currentUserService.Username;
+        invoice.UpdatedDate = now;
+
+        await db.SaveChangesAsync();
+        await auditService.WriteAsync(
+            actionType: "invoice.approve",
+            entityName: nameof(Invoice),
+            entityId: invoice.InvoiceId.ToString(),
+            oldValues: oldValues,
+            newValues: CreateSnapshot(invoice),
+            metadata: new
+            {
+                from = fromStatus.ToString(),
+                to = invoice.ApprovalStatus.ToString(),
+                remarks = invoice.ApprovalRemarks,
+            });
+
+        return Ok(ToResponse(invoice, includeItems: true));
+    }
+
+    [Authorize(Policy = PermissionConstants.InvoiceReject)]
+    [HttpPost("{id:guid}/reject")]
+    public async Task<IActionResult> RejectInvoice(
+        Guid id,
+        [FromBody] InvoiceApprovalActionRequest? request,
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserService currentUserService,
+        [FromServices] AuditService auditService)
+    {
+        var invoice = await db.Invoices.Include(i => i.Items).FirstOrDefaultAsync(i => i.InvoiceId == id);
+        if (invoice == null) return NotFound();
+
+        if (invoice.ApprovalStatus != InvoiceApprovalStatus.Submitted)
+        {
+            return BadRequest(new { message = $"Invoice in '{invoice.ApprovalStatus}' state cannot be rejected." });
+        }
+
+        var fromStatus = invoice.ApprovalStatus;
+        var oldValues = CreateSnapshot(invoice);
+        var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+        invoice.ApprovalStatus = InvoiceApprovalStatus.Rejected;
+        invoice.Status = InvoiceStatus.Draft;
+        invoice.RejectedByUserId = currentUserService.UserId;
+        invoice.RejectedBy = currentUserService.Username;
+        invoice.RejectedAt = now;
+        invoice.ApprovalRemarks = request?.Remarks?.Trim();
+        invoice.UpdatedBy = currentUserService.Username;
+        invoice.UpdatedDate = now;
+
+        await db.SaveChangesAsync();
+        await auditService.WriteAsync(
+            actionType: "invoice.reject",
+            entityName: nameof(Invoice),
+            entityId: invoice.InvoiceId.ToString(),
+            oldValues: oldValues,
+            newValues: CreateSnapshot(invoice),
+            metadata: new
+            {
+                from = fromStatus.ToString(),
+                to = invoice.ApprovalStatus.ToString(),
+                remarks = invoice.ApprovalRemarks,
+            });
+
+        return Ok(ToResponse(invoice, includeItems: true));
+    }
+
+    [Authorize(Policy = PermissionConstants.InvoicePay)]
+    [HttpPost("{id:guid}/pay")]
+    public async Task<IActionResult> MarkInvoicePaid(
+        Guid id,
+        [FromBody] InvoiceApprovalActionRequest? request,
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserService currentUserService,
+        [FromServices] AuditService auditService)
+    {
+        var invoice = await db.Invoices.Include(i => i.Items).FirstOrDefaultAsync(i => i.InvoiceId == id);
+        if (invoice == null) return NotFound();
+
+        if (invoice.ApprovalStatus != InvoiceApprovalStatus.Approved)
+        {
+            return BadRequest(new { message = $"Invoice in '{invoice.ApprovalStatus}' state cannot be marked as paid." });
+        }
+
+        var fromStatus = invoice.ApprovalStatus;
+        var oldValues = CreateSnapshot(invoice);
+        var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+        invoice.ApprovalStatus = InvoiceApprovalStatus.Paid;
+        invoice.Status = InvoiceStatus.Paid;
+        invoice.PaidByUserId = currentUserService.UserId;
+        invoice.PaidBy = currentUserService.Username;
+        invoice.PaidAt = now;
+        invoice.ApprovalRemarks = request?.Remarks?.Trim();
+        invoice.UpdatedBy = currentUserService.Username;
+        invoice.UpdatedDate = now;
+
+        await db.SaveChangesAsync();
+        await auditService.WriteAsync(
+            actionType: "invoice.pay",
+            entityName: nameof(Invoice),
+            entityId: invoice.InvoiceId.ToString(),
+            oldValues: oldValues,
+            newValues: CreateSnapshot(invoice),
+            metadata: new
+            {
+                from = fromStatus.ToString(),
+                to = invoice.ApprovalStatus.ToString(),
+                remarks = invoice.ApprovalRemarks,
+            });
+
+        return Ok(ToResponse(invoice, includeItems: true));
     }
 
     private async Task<string?> ValidateInvoiceRequest(InvoiceRequest request, ErpDbContext db, Guid? existingInvoiceId)
@@ -374,6 +572,20 @@ public class InvoicesController : ControllerBase
             TaxAmount = invoice.TaxAmount,
             GrandTotal = invoice.GrandTotal,
             Status = invoice.Status,
+            ApprovalStatus = invoice.ApprovalStatus,
+            SubmittedByUserId = invoice.SubmittedByUserId,
+            SubmittedBy = invoice.SubmittedBy,
+            SubmittedAt = invoice.SubmittedAt,
+            ApprovedByUserId = invoice.ApprovedByUserId,
+            ApprovedBy = invoice.ApprovedBy,
+            ApprovedAt = invoice.ApprovedAt,
+            RejectedByUserId = invoice.RejectedByUserId,
+            RejectedBy = invoice.RejectedBy,
+            RejectedAt = invoice.RejectedAt,
+            PaidByUserId = invoice.PaidByUserId,
+            PaidBy = invoice.PaidBy,
+            PaidAt = invoice.PaidAt,
+            ApprovalRemarks = invoice.ApprovalRemarks,
             Notes = invoice.Notes,
             CreatedBy = invoice.CreatedBy,
             CreatedDate = invoice.CreatedDate,
@@ -407,6 +619,20 @@ public class InvoicesController : ControllerBase
         invoice.TaxAmount,
         invoice.GrandTotal,
         invoice.Status,
+        invoice.ApprovalStatus,
+        invoice.SubmittedByUserId,
+        invoice.SubmittedBy,
+        invoice.SubmittedAt,
+        invoice.ApprovedByUserId,
+        invoice.ApprovedBy,
+        invoice.ApprovedAt,
+        invoice.RejectedByUserId,
+        invoice.RejectedBy,
+        invoice.RejectedAt,
+        invoice.PaidByUserId,
+        invoice.PaidBy,
+        invoice.PaidAt,
+        invoice.ApprovalRemarks,
         invoice.Notes,
         invoice.CreatedBy,
         invoice.CreatedDate,
@@ -425,4 +651,10 @@ public class InvoicesController : ControllerBase
             item.CreatedDate,
         }).ToList(),
     };
+
+    private static bool CanEditInvoice(Invoice invoice) =>
+        invoice.ApprovalStatus == InvoiceApprovalStatus.Draft
+        || invoice.ApprovalStatus == InvoiceApprovalStatus.Rejected;
+
+    private static bool CanDeleteInvoice(Invoice invoice) => CanEditInvoice(invoice);
 }
