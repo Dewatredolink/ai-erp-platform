@@ -53,47 +53,17 @@ public class CompaniesController : ControllerBase
         [FromServices] AuditService auditService)
     {
         var scope = await currentUserScopeService.GetScopeAsync();
-        Branch? branch = null;
-        var branchId = request.BranchId;
-
-        if (branchId.HasValue)
+        var branchResult = await currentUserScopeService.ResolveBranchForCompanyCreateAsync(request.BranchId, scope);
+        if (!branchResult.IsAuthorized)
         {
-            branch = await db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId.Value);
-            if (branch == null)
-            {
-                return BadRequest(new { message = "Branch does not exist." });
-            }
-        }
-
-        if (!scope.HasGlobalAccess)
-        {
-            if (branchId.HasValue)
-            {
-                if (!scope.AllowedBranchIds.Contains(branchId.Value))
-                {
-                    return StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not authorized to access the requested branch." });
-                }
-            }
-            else if (scope.AllowedBranchIds.Count == 1)
-            {
-                branchId = scope.AllowedBranchIds.Single();
-                branch = await db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId.Value);
-            }
-            else if (scope.AllowedBranchIds.Count == 0)
-            {
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "You do not have an assigned branch for company creation." });
-            }
-            else
-            {
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "BranchId is required when multiple branch assignments exist." });
-            }
+            return StatusCode(branchResult.StatusCode!.Value, new { message = branchResult.Message });
         }
 
         var username = currentUserService.Username;
         var company = new Company
         {
-            BranchId = branchId,
-            Branch = branch,
+            BranchId = branchResult.BranchId,
+            Branch = branchResult.Branch,
             CompanyName = request.CompanyName!,
             GSTIN = request.GSTIN!,
             PAN = request.PAN!,
@@ -138,42 +108,28 @@ public class CompaniesController : ControllerBase
         [FromServices] AuditService auditService)
     {
         var scope = await currentUserScopeService.GetScopeAsync();
-        var company = await currentUserScopeService
-            .ApplyCompanyScope(db.Companies.Include(c => c.Branch), scope)
-            .FirstOrDefaultAsync(c => c.CompanyId == id);
+        var company = await currentUserScopeService.FindAccessibleCompanyAsync(
+            db.Companies.Include(c => c.Branch),
+            id,
+            scope);
 
         if (company == null) return NotFound();
 
         var oldValues = CreateSnapshot(company);
         var requestedBranchId = request.BranchId ?? company.BranchId;
+        var branchResult = await currentUserScopeService.ResolveBranchForCompanyUpdateAsync(
+            requestedBranchId,
+            company.BranchId,
+            scope);
+        if (!branchResult.IsAuthorized)
+        {
+            return StatusCode(branchResult.StatusCode!.Value, new { message = branchResult.Message });
+        }
+
         if (requestedBranchId != company.BranchId)
         {
-            if (requestedBranchId.HasValue)
-            {
-                var branch = await db.Branches.FirstOrDefaultAsync(b => b.BranchId == requestedBranchId.Value);
-                if (branch == null)
-                {
-                    return BadRequest(new { message = "Branch does not exist." });
-                }
-
-                if (!scope.HasGlobalAccess && !scope.AllowedBranchIds.Contains(requestedBranchId.Value))
-                {
-                    return StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not authorized to assign the requested branch." });
-                }
-
-                company.BranchId = requestedBranchId;
-                company.Branch = branch;
-            }
-            else
-            {
-                if (!scope.HasGlobalAccess)
-                {
-                    return StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not authorized to remove the company branch assignment." });
-                }
-
-                company.BranchId = null;
-                company.Branch = null;
-            }
+            company.BranchId = branchResult.BranchId;
+            company.Branch = branchResult.Branch;
         }
 
         company.CompanyName = request.CompanyName ?? company.CompanyName;
@@ -215,9 +171,7 @@ public class CompaniesController : ControllerBase
         [FromServices] AuditService auditService)
     {
         var scope = await currentUserScopeService.GetScopeAsync();
-        var company = await currentUserScopeService
-            .ApplyCompanyScope(db.Companies, scope)
-            .FirstOrDefaultAsync(c => c.CompanyId == id);
+        var company = await currentUserScopeService.FindAccessibleCompanyAsync(db.Companies, id, scope);
 
         if (company == null) return NotFound();
 

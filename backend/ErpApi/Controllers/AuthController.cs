@@ -134,18 +134,17 @@ public class AuthController : ControllerBase
 
     [Authorize]
     [HttpGet("me")]
-    public async Task<IActionResult> GetCurrentUser([FromServices] ErpDbContext db)
+    public async Task<IActionResult> GetCurrentUser(
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserService currentUserService)
     {
-        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? User.FindFirstValue("userId")
-            ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
-
-        if (userIdClaim == null || !int.TryParse(userIdClaim, out var userId))
+        var userId = currentUserService.UserId;
+        if (!userId.HasValue)
         {
             return Unauthorized();
         }
 
-        var user = await db.Users.FindAsync(userId);
+        var user = await db.Users.FindAsync(userId.Value);
         if (user == null)
         {
             return Unauthorized();

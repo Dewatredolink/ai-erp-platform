@@ -135,10 +135,12 @@ public class InvoicesController : ControllerBase
         [FromServices] AuditService auditService)
     {
         var scope = await currentUserScopeService.GetScopeAsync();
-        var companyAccessResult = await EnsureCompanyAccessAsync(request.CompanyId, db, currentUserScopeService, scope);
-        if (companyAccessResult != null)
+        var companyAccess = await currentUserScopeService.CheckCompanyAccessAsync(request.CompanyId, scope);
+        if (!companyAccess.HasAccess)
         {
-            return companyAccessResult;
+            return companyAccess.Exists
+                ? StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not authorized to access the requested company." })
+                : BadRequest(new { message = "Company does not exist." });
         }
 
         var validationError = await ValidateInvoiceRequest(request, db, null);
@@ -194,23 +196,24 @@ public class InvoicesController : ControllerBase
         [FromServices] AuditService auditService)
     {
         var scope = await currentUserScopeService.GetScopeAsync();
-        var invoice = await currentUserScopeService
-            .ApplyInvoiceScope(db.Invoices
-            .Include(i => i.Items)
-            , scope)
-            .FirstOrDefaultAsync(i => i.InvoiceId == id);
+        var invoice = await currentUserScopeService.FindAccessibleInvoiceAsync(
+            db.Invoices.Include(i => i.Items),
+            id,
+            scope);
 
         if (invoice == null) return NotFound();
 
-        if (!CanEditInvoice(invoice))
+        if (!CurrentUserScopeService.CanEditInvoice(invoice))
         {
             return Conflict(new { message = $"Invoice cannot be edited while in '{invoice.ApprovalStatus}' state." });
         }
 
-        var companyAccessResult = await EnsureCompanyAccessAsync(request.CompanyId, db, currentUserScopeService, scope);
-        if (companyAccessResult != null)
+        var companyAccess = await currentUserScopeService.CheckCompanyAccessAsync(request.CompanyId, scope);
+        if (!companyAccess.HasAccess)
         {
-            return companyAccessResult;
+            return companyAccess.Exists
+                ? StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not authorized to access the requested company." })
+                : BadRequest(new { message = "Company does not exist." });
         }
 
         var validationError = await ValidateInvoiceRequest(request, db, id);
@@ -267,15 +270,14 @@ public class InvoicesController : ControllerBase
         [FromServices] AuditService auditService)
     {
         var scope = await currentUserScopeService.GetScopeAsync();
-        var invoice = await currentUserScopeService
-            .ApplyInvoiceScope(db.Invoices
-            .Include(i => i.Items)
-            , scope)
-            .FirstOrDefaultAsync(i => i.InvoiceId == id);
+        var invoice = await currentUserScopeService.FindAccessibleInvoiceAsync(
+            db.Invoices.Include(i => i.Items),
+            id,
+            scope);
 
         if (invoice == null) return NotFound();
 
-        if (!CanDeleteInvoice(invoice))
+        if (!CurrentUserScopeService.CanDeleteInvoice(invoice))
         {
             return Conflict(new { message = $"Invoice cannot be deleted while in '{invoice.ApprovalStatus}' state." });
         }
@@ -333,12 +335,13 @@ public class InvoicesController : ControllerBase
         [FromServices] AuditService auditService)
     {
         var scope = await currentUserScopeService.GetScopeAsync();
-        var invoice = await currentUserScopeService
-            .ApplyInvoiceScope(db.Invoices.Include(i => i.Items), scope)
-            .FirstOrDefaultAsync(i => i.InvoiceId == id);
+        var invoice = await currentUserScopeService.FindAccessibleInvoiceAsync(
+            db.Invoices.Include(i => i.Items),
+            id,
+            scope);
         if (invoice == null) return NotFound();
 
-        if (invoice.ApprovalStatus != InvoiceApprovalStatus.Draft && invoice.ApprovalStatus != InvoiceApprovalStatus.Rejected)
+        if (!CurrentUserScopeService.CanSubmitInvoice(invoice))
         {
             return BadRequest(new { message = $"Invoice in '{invoice.ApprovalStatus}' state cannot be submitted." });
         }
@@ -383,12 +386,13 @@ public class InvoicesController : ControllerBase
         [FromServices] AuditService auditService)
     {
         var scope = await currentUserScopeService.GetScopeAsync();
-        var invoice = await currentUserScopeService
-            .ApplyInvoiceScope(db.Invoices.Include(i => i.Items), scope)
-            .FirstOrDefaultAsync(i => i.InvoiceId == id);
+        var invoice = await currentUserScopeService.FindAccessibleInvoiceAsync(
+            db.Invoices.Include(i => i.Items),
+            id,
+            scope);
         if (invoice == null) return NotFound();
 
-        if (invoice.ApprovalStatus != InvoiceApprovalStatus.Submitted)
+        if (!CurrentUserScopeService.CanApproveInvoice(invoice))
         {
             return BadRequest(new { message = $"Invoice in '{invoice.ApprovalStatus}' state cannot be approved." });
         }
@@ -433,12 +437,13 @@ public class InvoicesController : ControllerBase
         [FromServices] AuditService auditService)
     {
         var scope = await currentUserScopeService.GetScopeAsync();
-        var invoice = await currentUserScopeService
-            .ApplyInvoiceScope(db.Invoices.Include(i => i.Items), scope)
-            .FirstOrDefaultAsync(i => i.InvoiceId == id);
+        var invoice = await currentUserScopeService.FindAccessibleInvoiceAsync(
+            db.Invoices.Include(i => i.Items),
+            id,
+            scope);
         if (invoice == null) return NotFound();
 
-        if (invoice.ApprovalStatus != InvoiceApprovalStatus.Submitted)
+        if (!CurrentUserScopeService.CanRejectInvoice(invoice))
         {
             return BadRequest(new { message = $"Invoice in '{invoice.ApprovalStatus}' state cannot be rejected." });
         }
@@ -483,12 +488,13 @@ public class InvoicesController : ControllerBase
         [FromServices] AuditService auditService)
     {
         var scope = await currentUserScopeService.GetScopeAsync();
-        var invoice = await currentUserScopeService
-            .ApplyInvoiceScope(db.Invoices.Include(i => i.Items), scope)
-            .FirstOrDefaultAsync(i => i.InvoiceId == id);
+        var invoice = await currentUserScopeService.FindAccessibleInvoiceAsync(
+            db.Invoices.Include(i => i.Items),
+            id,
+            scope);
         if (invoice == null) return NotFound();
 
-        if (invoice.ApprovalStatus != InvoiceApprovalStatus.Approved)
+        if (!CurrentUserScopeService.CanMarkInvoicePaid(invoice))
         {
             return BadRequest(new { message = $"Invoice in '{invoice.ApprovalStatus}' state cannot be marked as paid." });
         }
@@ -711,33 +717,4 @@ public class InvoicesController : ControllerBase
         }).ToList(),
     };
 
-    private static bool CanEditInvoice(Invoice invoice) =>
-        invoice.ApprovalStatus == InvoiceApprovalStatus.Draft
-        || invoice.ApprovalStatus == InvoiceApprovalStatus.Rejected;
-
-    private static bool CanDeleteInvoice(Invoice invoice) => CanEditInvoice(invoice);
-
-    private static async Task<IActionResult?> EnsureCompanyAccessAsync(
-        int companyId,
-        ErpDbContext db,
-        CurrentUserScopeService currentUserScopeService,
-        CurrentUserScope scope)
-    {
-        var hasAccess = await currentUserScopeService
-            .ApplyCompanyScope(db.Companies.AsNoTracking(), scope)
-            .AnyAsync(company => company.CompanyId == companyId);
-
-        if (hasAccess)
-        {
-            return null;
-        }
-
-        var companyExists = await db.Companies.AsNoTracking().AnyAsync(company => company.CompanyId == companyId);
-        return companyExists
-            ? new ObjectResult(new { message = "You are not authorized to access the requested company." })
-            {
-                StatusCode = StatusCodes.Status403Forbidden,
-            }
-            : new BadRequestObjectResult(new { message = "Company does not exist." });
-    }
 }

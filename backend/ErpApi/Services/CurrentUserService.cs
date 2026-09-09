@@ -15,17 +15,24 @@ public class CurrentUserService
     {
         get
         {
-            var principal = _httpContextAccessor.HttpContext?.User;
-            var userId = principal?.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? principal?.FindFirstValue("userId")
-                ?? principal?.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
-
-            return int.TryParse(userId, out var parsedUserId) ? parsedUserId : null;
+            return GetUserId(_httpContextAccessor.HttpContext?.User);
         }
     }
 
     public string Username =>
-        _httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.Name)
-        ?? _httpContextAccessor.HttpContext?.User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.UniqueName)
+        GetUsername(_httpContextAccessor.HttpContext?.User);
+
+    public static int? GetUserId(ClaimsPrincipal? principal)
+    {
+        var userId = principal?.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? principal?.FindFirstValue("userId")
+            ?? principal?.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
+
+        return int.TryParse(userId, out var parsedUserId) ? parsedUserId : null;
+    }
+
+    public static string GetUsername(ClaimsPrincipal? principal) =>
+        principal?.FindFirstValue(ClaimTypes.Name)
+        ?? principal?.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.UniqueName)
         ?? "Anonymous";
 }

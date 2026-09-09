@@ -1,5 +1,5 @@
-using System.Security.Claims;
 using ErpApi.Data;
+using ErpApi.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
@@ -30,17 +30,14 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
             return;
         }
 
-        var userIdValue = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? context.User.FindFirstValue("userId")
-            ?? context.User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
-
-        if (!int.TryParse(userIdValue, out var userId))
+        var userId = CurrentUserService.GetUserId(context.User);
+        if (!userId.HasValue)
         {
             return;
         }
 
         var hasPermission = await _db.UserRoles
-            .Where(ur => ur.UserId == userId)
+            .Where(ur => ur.UserId == userId.Value)
             .SelectMany(ur => ur.Role!.RolePermissions.Select(rp => rp.Permission!.Name))
             .AnyAsync(permission => permission == requirement.Permission);
 
