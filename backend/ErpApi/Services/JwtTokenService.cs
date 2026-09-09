@@ -23,18 +23,40 @@ namespace ErpApi.Services
             _settings = settings;
         }
 
-        public (string Token, DateTime ExpiresAt) GenerateToken(User user)
+        public (string Token, DateTime ExpiresAt) GenerateToken(
+            User user,
+            IEnumerable<string>? roles = null,
+            IEnumerable<string>? permissions = null)
         {
             var expiresAt = DateTime.UtcNow.AddMinutes(_settings.ExpirationMinutes);
 
-            var claims = new[]
+            var claims = new List<Claim>
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
                 new Claim("userId", user.UserId.ToString()),
+                new Claim(ClaimTypes.Name, user.Username),
                 new Claim(JwtRegisteredClaimNames.UniqueName, user.Username),
+                new Claim(ClaimTypes.Email, user.Email),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             };
+
+            if (roles != null)
+            {
+                claims.AddRange(roles
+                    .Where(role => !string.IsNullOrWhiteSpace(role))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Select(role => new Claim(ClaimTypes.Role, role)));
+            }
+
+            if (permissions != null)
+            {
+                claims.AddRange(permissions
+                    .Where(permission => !string.IsNullOrWhiteSpace(permission))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Select(permission => new Claim("permission", permission)));
+            }
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Secret));
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

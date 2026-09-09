@@ -1,6 +1,9 @@
 using ErpApi.Data;
+using ErpApi.Authorization;
 using ErpApi.DTOs.Companies;
 using ErpApi.Models;
+using ErpApi.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,8 +11,10 @@ namespace ErpApi.Controllers;
 
 [ApiController]
 [Route("api/companies")]
+[Authorize]
 public class CompaniesController : ControllerBase
 {
+    [Authorize(Policy = PermissionConstants.CompanyRead)]
     [HttpGet]
     public async Task<IActionResult> GetAllCompanies([FromServices] ErpDbContext db)
     {
@@ -17,6 +22,7 @@ public class CompaniesController : ControllerBase
         return Ok(companies.Select(ToResponse));
     }
 
+    [Authorize(Policy = PermissionConstants.CompanyRead)]
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetCompanyById(int id, [FromServices] ErpDbContext db)
     {
@@ -24,9 +30,15 @@ public class CompaniesController : ControllerBase
         return company == null ? NotFound() : Ok(ToResponse(company));
     }
 
+    [Authorize(Policy = PermissionConstants.CompanyWrite)]
     [HttpPost]
-    public async Task<IActionResult> CreateCompany([FromBody] CompanyRequest request, [FromServices] ErpDbContext db)
+    public async Task<IActionResult> CreateCompany(
+        [FromBody] CompanyRequest request,
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserService currentUserService,
+        [FromServices] AuditService auditService)
     {
+        var username = currentUserService.Username;
         var company = new Company
         {
             CompanyName = request.CompanyName!,
@@ -44,24 +56,37 @@ public class CompaniesController : ControllerBase
             AadhaarNumber = request.AadhaarNumber!,
             MSMENumber = request.MSMENumber!,
             FSSAINumber = request.FSSAINumber!,
-            CreatedBy = request.CreatedBy!,
-            UpdatedBy = request.UpdatedBy!,
-            UpdatedDate = request.UpdatedDate,
+            CreatedBy = username,
+            UpdatedBy = username,
+            UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
             IsActive = request.IsActive,
             CreatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
         };
 
         db.Companies.Add(company);
         await db.SaveChangesAsync();
+        await auditService.WriteAsync(
+            actionType: "company.create",
+            entityName: nameof(Company),
+            entityId: company.CompanyId.ToString(),
+            newValues: CreateSnapshot(company));
+
         return Created($"/api/companies/{company.CompanyId}", ToResponse(company));
     }
 
+    [Authorize(Policy = PermissionConstants.CompanyWrite)]
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> UpdateCompany(int id, [FromBody] CompanyRequest request, [FromServices] ErpDbContext db)
+    public async Task<IActionResult> UpdateCompany(
+        int id,
+        [FromBody] CompanyRequest request,
+        [FromServices] ErpDbContext db,
+        [FromServices] CurrentUserService currentUserService,
+        [FromServices] AuditService auditService)
     {
         var company = await db.Companies.FindAsync(id);
         if (company == null) return NotFound();
 
+        var oldValues = CreateSnapshot(company);
         company.CompanyName = request.CompanyName ?? company.CompanyName;
         company.GSTIN = request.GSTIN ?? company.GSTIN;
         company.PAN = request.PAN ?? company.PAN;
@@ -78,20 +103,39 @@ public class CompaniesController : ControllerBase
         company.MSMENumber = request.MSMENumber ?? company.MSMENumber;
         company.FSSAINumber = request.FSSAINumber ?? company.FSSAINumber;
         company.IsActive = request.IsActive;
+        company.UpdatedBy = currentUserService.Username;
         company.UpdatedDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
 
         await db.SaveChangesAsync();
+        await auditService.WriteAsync(
+            actionType: "company.update",
+            entityName: nameof(Company),
+            entityId: company.CompanyId.ToString(),
+            oldValues: oldValues,
+            newValues: CreateSnapshot(company));
+
         return Ok(ToResponse(company));
     }
 
+    [Authorize(Policy = PermissionConstants.CompanyDelete)]
     [HttpDelete("{id:int}")]
-    public async Task<IActionResult> DeleteCompany(int id, [FromServices] ErpDbContext db)
+    public async Task<IActionResult> DeleteCompany(
+        int id,
+        [FromServices] ErpDbContext db,
+        [FromServices] AuditService auditService)
     {
         var company = await db.Companies.FindAsync(id);
         if (company == null) return NotFound();
 
+        var oldValues = CreateSnapshot(company);
         db.Companies.Remove(company);
         await db.SaveChangesAsync();
+        await auditService.WriteAsync(
+            actionType: "company.delete",
+            entityName: nameof(Company),
+            entityId: id.ToString(),
+            oldValues: oldValues);
+
         return Ok("Deleted");
     }
 
@@ -118,5 +162,30 @@ public class CompaniesController : ControllerBase
         CreatedDate = company.CreatedDate,
         UpdatedDate = company.UpdatedDate,
         IsActive = company.IsActive,
+    };
+
+    private static object CreateSnapshot(Company company) => new
+    {
+        company.CompanyId,
+        company.CompanyName,
+        company.Address,
+        company.City,
+        company.State,
+        company.PinCode,
+        company.Email,
+        company.PhoneNumber,
+        company.Website,
+        company.GSTIN,
+        company.PAN,
+        company.DrugLicenceNumber,
+        company.UdogAadhaar,
+        company.AadhaarNumber,
+        company.MSMENumber,
+        company.FSSAINumber,
+        company.CreatedBy,
+        company.UpdatedBy,
+        company.CreatedDate,
+        company.UpdatedDate,
+        company.IsActive,
     };
 }
